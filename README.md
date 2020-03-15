@@ -35,5 +35,5 @@ python evaluate_heur_output.py --predictions checkpoints/hans_predictions.txt --
 
 | S.No | Model                         | Entailed results                                                      |  Non entailed results                                         |
 |------|-------------------------------|-----------------------------------------------------------------------|---------------------------------------------------------------|
-| 1    | [Bert base uncased fine-tuned](https://drive.google.com/file/d/1qv582bbpPVGoxnAr0vMOLsDwBiPXDOXp/view?usp=sharing)  | lexical_overlap: 0.9102 |  subsequence: 0.9256 |  constituent: 0.9508 | lexical_overlap: 1.0 |  subsequence: 1.0 |  constituent: 1.0  |
-| 2    | [Bert base uncased pre-trained](https://drive.google.com/file/d/1hwFlMj5yjpEEp_Q0bRvRvaW61P8cXU8b/view?usp=sharing) | lexical_overlap: 1.0 |  subsequence: 1.0 | constituent: 1.0           | lexical_overlap: 0 .0 |  subsequence: 0.0 | constituent: 0.0  |
+| 1    | [Bert base uncased fine-tuned](https://drive.google.com/file/d/1qv582bbpPVGoxnAr0vMOLsDwBiPXDOXp/view?usp=sharing)  | lexical_overlap: 0.9102 /  subsequence: 0.9256 /  constituent: 0.9508 | lexical_overlap: 1.0 /  subsequence: 1.0 /  constituent: 1.0  |
+| 2    | [Bert base uncased pre-trained](https://drive.google.com/file/d/1hwFlMj5yjpEEp_Q0bRvRvaW61P8cXU8b/view?usp=sharing) | lexical_overlap: 1.0 /  subsequence: 1.0 / constituent: 1.0           | lexical_overlap: 0 .0 /  subsequence: 0.0 / constituent: 0.0  |
