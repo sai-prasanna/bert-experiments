@@ -29,3 +29,7 @@ This will generate a file `hans_predictions.txt` inside the checkpoints/ directo
 cd src/mnli
 python evaluate_heur_output.py --predictions checkpoints/hans_predictions.txt --evaluation_set ../../data/heuristics_evaluation_set.txt > ../../results/hans_results.txt
 ```
+
+
+### Models
+1. [Bert base uncased fine-tuned on MNLI](https://drive.google.com/file/d/1qv582bbpPVGoxnAr0vMOLsDwBiPXDOXp/view?usp=sharing)
