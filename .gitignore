@@ -4,3 +4,4 @@
 *checkpoints/
 **/runs/
 data/MNLI
+*checkpoints.zip
