@@ -2,7 +2,7 @@
 
 Steps to run the experiments:
 
-1. Download MNLI data
+### Download MNLI data
 
 ```bash
 cd data
@@ -10,25 +10,33 @@ chmod +x download_mnli_data.py
 ./download_mnli_data.py --data_dir MNLI/
 ```
 
-2. Run fine-tuning
+### Evaluating BERT models on HANS
+
+
+#### Fine-tuned on MNLI
 
 ```bash
 cd src/mnli
+# fine-tune on MNLI
 python bert_base_fine_tune.py --data_dir ../../data/MNLI/ --output_dir checkpoints/ --do_train --do_eval --do_lower_case --num_train_epochs 3 --gpu_list 0 1 2 3
-```
-
-3. Generate HANS predictions
-```bash
-cd src/mnli
+# generate HANS predictions - this will generate a file `hans_predictions.txt` inside the checkpoints/ directory
 python test_hans.py --data_dir ../../data/hans --model_type bert --model_name_or_path checkpoints/ --do_eval --do_lower_case --max_seq_length 128 --output_dir checkpoints/ --task_name hans
-```
-This will generate a file `hans_predictions.txt` inside the checkpoints/ directory
-
-4. Evaluate HANS predictions
-```bash
-cd src/mnli
+# evaluate HANS predictions
 python evaluate_heur_output.py --predictions checkpoints/hans_predictions.txt --evaluation_set ../../data/heuristics_evaluation_set.txt > ../../results/hans_results.txt
 ```
+
+#### Pre-trained(frozen) + classifier on MNLI
+
+```bash
+cd src/mnli
+# Train classifier on MNLI with frozen pre-trained layers
+python bert_pretrained_mnli.py --data_dir ../../data/MNLI/ --output_dir pretrained_checkpoints/ --do_train --do_eval --do_lower_case --num_train_epochs 3 --gpu_list 0 1 2 3
+# generate HANS predictions - this will generate a file `hans_predictions.txt` inside the checkpoints/ directory
+python test_hans.py --data_dir ../../data/hans --model_type bert --model_name_or_path pretrained_checkpoints/ --do_eval --do_lower_case --max_seq_length 128 --output_dir pretrained_checkpoints/ --task_name hans
+# evaluate HANS predictions
+python evaluate_heur_output.py --predictions pretrained_checkpoints/hans_predictions.txt --evaluation_set ../../data/heuristics_evaluation_set.txt > ../../results/pretrained_hans_results.txt
+```
+
 
 
 ### Models
