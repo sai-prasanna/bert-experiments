@@ -56,7 +56,7 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed)
 
 
-def train(args, train_dataset, model, tokenizer, model_name):
+def train(args, train_dataset, model, tokenizer, processor):
     """ Train the model """
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter()
@@ -87,12 +87,12 @@ def train(args, train_dataset, model, tokenizer, model_name):
     )
 
     # Check if saved optimizer or scheduler states exist
-    if os.path.isfile(os.path.join(model_name, "optimizer.pt")) and os.path.isfile(
-        os.path.join(model_name, "scheduler.pt")
+    if os.path.isfile(os.path.join(args.model_name, "optimizer.pt")) and os.path.isfile(
+        os.path.join(args.model_name, "scheduler.pt")
     ):
         # Load in optimizer and scheduler states
-        optimizer.load_state_dict(torch.load(os.path.join(model_name, "optimizer.pt")))
-        scheduler.load_state_dict(torch.load(os.path.join(model_name, "scheduler.pt")))
+        optimizer.load_state_dict(torch.load(os.path.join(args.model_name, "optimizer.pt")))
+        scheduler.load_state_dict(torch.load(os.path.join(args.model_name, "scheduler.pt")))
 
     if args.fp16:
         try:
@@ -125,10 +125,10 @@ def train(args, train_dataset, model, tokenizer, model_name):
     epochs_trained = 0
     steps_trained_in_current_epoch = 0
     # Check if continuing training from a checkpoint
-    if os.path.exists(model_name):
+    if os.path.exists(args.model_name):
         # set global_step to global_step of last saved checkpoint from model path
         try:
-            global_step = int(model_name.split("-")[-1].split("/")[0])
+            global_step = int(args.model_name.split("-")[-1].split("/")[0])
         except ValueError:
             global_step = 0
         epochs_trained = global_step // (len(train_dataloader) // args.gradient_accumulation_steps)
@@ -188,7 +188,7 @@ def train(args, train_dataset, model, tokenizer, model_name):
                     if (
                         args.local_rank == -1 and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
-                        results = evaluate(args, model, tokenizer)
+                        results = evaluate(args, model, tokenizer, processor)
                         for key, value in results.items():
                             eval_key = "eval_{}".format(key)
                             logs[eval_key] = value
@@ -234,14 +234,14 @@ def train(args, train_dataset, model, tokenizer, model_name):
     return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, tokenizer, task_name="mnli", prefix=""):
+def evaluate(args, model, tokenizer, processor, task_name="mnli", prefix=""):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
     eval_task_names = ("mnli", "mnli-mm") if task_name == "mnli" else (task_name,)
     eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if task_name == "mnli" else (args.output_dir,)
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        eval_dataset = load_and_cache_examples(args, eval_task, tokenizer, evaluate=True)
+        eval_dataset = load_and_cache_examples(args, eval_task, tokenizer, processor, evaluate=True)
 
         if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
             os.makedirs(eval_output_dir)
@@ -299,7 +299,7 @@ def evaluate(args, model, tokenizer, task_name="mnli", prefix=""):
     return results
 
 
-def load_and_cache_examples(args, task, tokenizer, processor, output_mode, model_name, evaluate=False):
+def load_and_cache_examples(args, task, tokenizer, processor, evaluate=False):
     if args.local_rank not in [-1, 0] and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
 
@@ -308,7 +308,7 @@ def load_and_cache_examples(args, task, tokenizer, processor, output_mode, model
         args.data_dir,
         "cached_{}_{}_{}_{}".format(
             "dev" if evaluate else "train",
-            list(filter(None, model_name.split("/"))).pop(),
+            list(filter(None, args.model_name.split("/"))).pop(),
             str(args.max_seq_length),
             str(task),
         ),
@@ -327,7 +327,7 @@ def load_and_cache_examples(args, task, tokenizer, processor, output_mode, model
             tokenizer,
             label_list=label_list,
             max_length=args.max_seq_length,
-            output_mode=output_mode,
+            output_mode=args.output_mode,
             pad_on_left=False,
             pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0],
             pad_token_segment_id=0,
@@ -386,28 +386,28 @@ def worker(local_rank, args):
 
     # Prepare MNLI task
     processor = MnliProcessor()
-    output_mode = "classification"
+    args.output_mode = "classification"
     label_list = processor.get_labels()
     num_labels = len(label_list)
-    model_name = "bert-base-uncased"
+    args.model_name = "bert-base-uncased"
 
     # Load pretrained model and tokenizer
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
     config = BertConfig.from_pretrained(
-        model_name,
+        args.model_name,
         num_labels=num_labels,
         finetuning_task=task_name,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
     tokenizer = BertTokenizer.from_pretrained(
-        model_name,
+        args.model_name,
         do_lower_case=args.do_lower_case,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
     model = BertForSequenceClassification.from_pretrained(
-        model_name,
+        args.model_name,
         from_tf=False,
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
@@ -422,8 +422,8 @@ def worker(local_rank, args):
 
     # Training
     if args.do_train:
-        train_dataset = load_and_cache_examples(args, task_name, tokenizer, processor, output_mode, model_name, evaluate=False)
-        global_step, tr_loss = train(args, train_dataset, model, tokenizer, model_name)
+        train_dataset = load_and_cache_examples(args, task_name, tokenizer, processor, evaluate=False)
+        global_step, tr_loss = train(args, train_dataset, model, tokenizer, processor)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
@@ -466,7 +466,7 @@ def worker(local_rank, args):
 
             model = BertForSequenceClassification.from_pretrained(checkpoint)
             model.to(args.device)
-            result = evaluate(args, model, tokenizer, prefix=prefix)
+            result = evaluate(args, model, tokenizer, processor, prefix=prefix)
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
             results.update(result)
 

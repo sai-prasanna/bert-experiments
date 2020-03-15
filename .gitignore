@@ -1,6 +1,6 @@
 .mypy_cache/
 .vscode/
 **/__pycache__/
-checkpoints/
+*checkpoints/
 **/runs/
 data/MNLI
