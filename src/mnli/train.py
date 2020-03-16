@@ -413,6 +413,11 @@ def worker(local_rank, args):
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
 
+    if args.train_mode == "frozen":
+        for name, param in model.named_parameters():
+            if 'classifier' not in name:  # classifier layer
+                param.requires_grad = False
+
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
@@ -507,6 +512,7 @@ def main():
         "than this will be truncated, sequences shorter will be padded.",
     )
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
+    parser.add_argument("--train_mode", options=["fine_tune", "random", "frozen"], default="fine_tune")
     parser.add_argument("--do_eval", action="store_true", help="Whether to run eval on the dev set.")
     parser.add_argument(
         "--evaluate_during_training", action="store_true", help="Run evaluation during training at each logging step.",
@@ -571,7 +577,7 @@ def main():
         "See details at https://nvidia.github.io/apex/amp.html",
     )
     parser.add_argument(
-        "--gpu-list", type=int, help="List of GPU IDs", nargs="+", default=-1, required=True
+        "--gpu_list", type=int, help="List of GPU IDs", nargs="+", default=-1, required=True
     )
     args = parser.parse_args()
 
