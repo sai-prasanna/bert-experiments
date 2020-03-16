@@ -20,7 +20,7 @@ cd src/mnli
 # fine-tune on MNLI
 python train.py --data_dir ../../data/MNLI/ --output_dir checkpoints/fine_tuned/ --do_train --do_eval --do_lower_case --num_train_epochs 3 --gpu_list 0 1 2 3
 # generate HANS predictions - this will generate a file `hans_predictions.txt` inside the checkpoints/fine_tuned/ directory
-python eval.py --data_dir ../../data/hans --model_name_or_path checkpoints/fine_tuned/ --do_lower_case --max_seq_length 128 --output_dir checkpoints/
+python eval.py --data_dir ../../data/hans --model_name_or_path checkpoints/fine_tuned/ --do_lower_case --max_seq_length 128 --output_dir checkpoints/fine_tuned
 # evaluate HANS predictions
 python evaluate_heur_output.py --predictions checkpoints/fine_tuned/hans_predictions.txt --evaluation_set ../../data/heuristics_evaluation_set.txt > ../../results/hans_results.txt
 ```
