@@ -18,11 +18,10 @@ chmod +x download_mnli_data.py
 ```bash
 cd src/mnli
 # fine-tune on MNLI
-python train.py --data_dir ../../data/MNLI/ --output_dir checkpoints/fine_tuned/ --do_train --do_eval --do_lower_case --num_train_epochs 3 --gpu_list 0 1 2 3
-# generate HANS predictions - this will generate a file `hans_predictions.txt` inside the checkpoints/fine_tuned/ directory
-python eval.py --data_dir ../../data/hans --model_name_or_path checkpoints/fine_tuned/ --do_lower_case --max_seq_length 128 --output_dir checkpoints/fine_tuned
-# evaluate HANS predictions
-python evaluate_heur_output.py --predictions checkpoints/fine_tuned/hans_predictions.txt --evaluation_set ../../data/heuristics_evaluation_set.txt > ../../results/hans_results.txt
+CUDA_VISIBLE_DEVICES=3 python run_glue.py --data_dir ../../data/MNLI --output_dir checkpoints/finetuned/ --do_train --do_eval --do_lower_case --evaluate_during_training --per_gpu_eval_batch_size 128 --model_type bert --model_name_or_path bert-base-uncased --task_name mnli  --save_steps 5000 --logging_steps 5000 --train_mode finetune 
+
+# Predict and evaluate on HANS
+python python evaluate.py --model_dir checkpoints/finetuned/ --data_dir ../../data/hans/ --device_id 0
 ```
 
 #### Pre-trained(frozen) + classifier on MNLI
@@ -30,11 +29,21 @@ python evaluate_heur_output.py --predictions checkpoints/fine_tuned/hans_predict
 ```bash
 cd src/mnli
 # Train classifier on MNLI with frozen pre-trained layers
-python train.py --data_dir ../../data/MNLI/ --output_dir checkpoints/frozen/ --do_train --do_eval --do_lower_case --num_train_epochs 3 --gpu_list 0 1 2 3 --train_mode frozen
-# generate HANS predictions - this will generate a file `hans_predictions.txt` inside the checkpoints/ directory
-python eval.py --data_dir ../../data/hans --model_name_or_path checkpoints/frozen/ --do_lower_case --max_seq_length 128 --output_dir checkpoints/frozen/
-# evaluate HANS predictions
-python evaluate_heur_output.py --predictions checkpoints/frozen/hans_predictions.txt --evaluation_set ../../data/heuristics_evaluation_set.txt > ../../results/pretrained_hans_results.txt
+CUDA_VISIBLE_DEVICES=3 python run_glue.py --data_dir ../../data/MNLI --output_dir checkpoints/finetuned/ --do_train --do_eval --do_lower_case --evaluate_during_training --per_gpu_eval_batch_size 128 --train_mode finetune --model_type bert --model_name_or_path bert-base-uncased --task_name mnli  --save_steps 5000 --logging_steps 5000 --train_mode frozen
+
+# Predict and evaluate on HANS
+python python evaluate.py --model_dir checkpoints/frozen/ --data_dir ../../data/hans/ --device_id 0
+```
+
+#### Random BERT + classifier on MNLI
+
+```bash
+cd src/mnli
+# Train classifier on MNLI with frozen pre-trained layers
+CUDA_VISIBLE_DEVICES=3 python run_glue.py --data_dir ../../data/MNLI --output_dir checkpoints/finetuned/ --do_train --do_eval --do_lower_case --evaluate_during_training --per_gpu_eval_batch_size 128 --train_mode finetune --model_type bert --model_name_or_path bert-base-uncased --task_name mnli  --save_steps 5000 --logging_steps 5000 --train_mode random
+
+# Predict and evaluate on HANS
+python python evaluate.py --model_dir checkpoints/random/ --data_dir ../../data/hans/ --device_id 0
 ```
 
 ### Models
