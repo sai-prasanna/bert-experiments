@@ -302,7 +302,7 @@ def train(args, train_dataset, model, tokenizer):
 def evaluate(args, model, tokenizer, prefix=""):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
     eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli" else (args.task_name,)
-    eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if args.task_name == "mnli" else (args.output_dir,)
+    eval_outputs_dirs = (args.output_dir, args.output_dir) if args.task_name == "mnli" else (args.output_dir,)
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
@@ -357,8 +357,12 @@ def evaluate(args, model, tokenizer, prefix=""):
             preds = np.squeeze(preds)
         result = compute_metrics(eval_task, preds, out_label_ids)
         results.update(result)
+        
+        file_name = "eval_results.txt"
+        if eval_task == "mnli-mm":
+            file_name = "eval_results_mm.txt"
 
-        output_eval_file = os.path.join(eval_output_dir, prefix, "eval_results.txt")
+        output_eval_file = os.path.join(eval_output_dir, prefix, file_name)
         with open(output_eval_file, "w") as writer:
             logger.info("***** Eval results {} *****".format(prefix))
             for key in sorted(result.keys()):
