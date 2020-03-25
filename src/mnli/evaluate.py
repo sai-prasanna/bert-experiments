@@ -208,14 +208,24 @@ def evaluate(predictions, hans_data_dir):
         "template": {}
     }
     print("Heuristic entailed results:")
+    entailed_correct = 0
+    entailed_total = 0
     for heuristic in heuristic_list:
         correct = heuristic_ent_correct_count_dict[heuristic]
         incorrect = heuristic_ent_incorrect_count_dict[heuristic]
         total = correct + incorrect
+        entailed_correct += correct
+        entailed_total += total
         percent = correct * 1.0 / total
         results["entailed"][heuristic] = percent
         print(heuristic + ": " + str(percent))
+    entailed_accuracy = entailed_correct * 1.0/entailed_total
+    results["entailed_accuracy"] = entailed_accuracy
 
+    print(f"\nEntailed accuracy: {entailed_accuracy}")
+
+    non_entailed_correct = 0
+    non_entailed_total = 0
     print("")
     print("Heuristic non-entailed results:")
     for heuristic in heuristic_list:
@@ -223,10 +233,20 @@ def evaluate(predictions, hans_data_dir):
         incorrect = heuristic_nonent_incorrect_count_dict[heuristic]
         total = correct + incorrect
         percent = correct * 1.0 / total
+        non_entailed_correct += correct
+        non_entailed_total += total
         results["non_entailed"][heuristic] = percent
 
         print(heuristic + ": " + str(percent))
+    
+    non_entailed_accuracy = non_entailed_correct * 1.0/non_entailed_total
+    results["non_entailed_accuracy"] = non_entailed_accuracy
+    print(f"\nNon-Entailed accuracy: {non_entailed_accuracy}")
 
+    total_accuracy = (entailed_correct + non_entailed_correct)  * 1.0/(entailed_total + non_entailed_total)
+    results["accuracy"] = total_accuracy
+    print(f"\nOverall accuracy: {total_accuracy}")
+    
     print("")
     print("Subcase results:")
     for subcase in subcase_list:
@@ -239,7 +259,7 @@ def evaluate(predictions, hans_data_dir):
         print(subcase + ": " + str(percent))
 
     print("")
-    print("Template results:")
+    # print("Template results:")
     for template in template_list:
         correct = template_correct_count_dict[template]
         incorrect = template_incorrect_count_dict[template]
@@ -247,8 +267,11 @@ def evaluate(predictions, hans_data_dir):
         percent = correct * 1.0 / total
         results["template"][template] = percent
 
-        print(template + ": " + str(percent))
+        # print(template + ": " + str(percent))
     return results
+
+
+def evaluate_mnli()
 
 def build_parser():
     parser = argparse.ArgumentParser()
