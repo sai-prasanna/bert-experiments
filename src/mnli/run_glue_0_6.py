@@ -26,6 +26,7 @@ import sys
 
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
@@ -470,6 +471,17 @@ def main():
               cache_dir=cache_dir,
               num_labels = num_labels)
 
+    # if  args.train_mode in ("random", "random_frozen"):
+        # nn.init.normal_(model)
+    
+    randomize = args.train_mode in ("random", "random_frozen")
+    frozen = args.train_mode in ("frozen", "random_frozen")
+    for name, param in model.named_parameters():
+        if random:
+            param.data.normal_()
+        if frozen and 'classifier' not in name:
+            param.requires_grad = False
+    
     if args.fp16:
         model.half()
     model.to(device)
@@ -577,16 +589,10 @@ def main():
         # Load a trained model and config that you have fine-tuned
         config = BertConfig(output_config_file)
         model = BertForSequenceClassification(config, num_labels=num_labels)
-        if args.train_mode not in ("random", "random_frozen"):
-            model.load_state_dict(torch.load(output_model_file))
-        if args.train_mode in ("frozen", "random_frozen"):
-            for name, param in model.named_parameters():
-                if 'classifier' not in name:  # classifier layer
-                    param.requires_grad = False
+        model.load_state_dict(torch.load(output_model_file))
     else:
         model = BertForSequenceClassification.from_pretrained(args.bert_model, num_labels=num_labels)
     model.to(device)
-
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         eval_examples = processor.get_dev_examples(args.data_dir)
