@@ -62,7 +62,7 @@ from transformers import glue_compute_metrics as compute_metrics
 from transformers import glue_convert_examples_to_features as convert_examples_to_features
 from transformers import glue_output_modes as output_modes
 from transformers import glue_processors as processors
-
+from experiment_impact_tracker.compute_tracker import ImpactTracker
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -112,6 +112,11 @@ def set_seed(args):
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
     if args.local_rank in [-1, 0]:
+        energy_logs_dir = args.output_dir + "/energy_logs/"
+        if not os.path.exists(energy_logs_dir):
+            os.makedirs(energy_logs_dir)
+        tracker = ImpactTracker(energy_logs_dir)
+        tracker.launch_impact_monitor()
         tb_writer = SummaryWriter()
 
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
