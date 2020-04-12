@@ -109,12 +109,12 @@ def set_seed(args):
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
 
-def evaluate(args, model, tokenizer):
+def evaluate(args, task_name, data_dir,  model, tokenizer):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
-    eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli" else (args.task_name,)
+    eval_task_names = ("mnli", "mnli-mm") if task_name == "mnli" else (task_name,)
     results = {}
     for eval_task in eval_task_names:
-        eval_dataset = load_and_cache_examples(args, eval_task, tokenizer, evaluate=True)
+        eval_dataset = load_and_cache_examples(args, data_dir, eval_task, tokenizer, evaluate=True)
 
         args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
         # Note that DistributedSampler samples randomly
@@ -164,7 +164,7 @@ def evaluate(args, model, tokenizer):
     return results
 
 
-def load_and_cache_examples(args, task, tokenizer, evaluate=False):
+def load_and_cache_examples(args, data_dir, task, tokenizer, evaluate=False):
     if args.local_rank not in [-1, 0] and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
 
@@ -172,7 +172,7 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     output_mode = output_modes[task]
     # Load data features from cache or dataset file
     cached_features_file = os.path.join(
-        args.data_dir,
+        data_dir,
         "cached_{}_{}_{}".format(
             "dev" if evaluate else "train",
             # list(filter(None, args.model_name_or_path.split("/"))).pop(), Single cache for each task
@@ -184,13 +184,13 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
         logger.info("Loading features from cached file %s", cached_features_file)
         features = torch.load(cached_features_file)
     else:
-        logger.info("Creating features from dataset file at %s", args.data_dir)
+        logger.info("Creating features from dataset file at %s", data_dir)
         label_list = processor.get_labels()
         if task in ["mnli", "mnli-mm"] and args.model_type in ["roberta", "xlmroberta"]:
             # HACK(label indices are swapped in RoBERTa pretrained model)
             label_list[1], label_list[2] = label_list[2], label_list[1]
         examples = (
-            processor.get_dev_examples(args.data_dir) if evaluate else processor.get_train_examples(args.data_dir)
+            processor.get_dev_examples(data_dir) if evaluate else processor.get_train_examples(data_dir)
         )
         features = convert_examples_to_features(
             examples,
@@ -221,15 +221,6 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     dataset = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
     return dataset
 
-def apply_randomization(model, randomize_scheme):
-    randomize_scheme = randomize_scheme.lower()
-    base_model = getattr(model, model.base_model_prefix, model)
-    if randomize_scheme == "none":
-        model = model
-    elif randomize_scheme == "embeddings":
-        base_model._init_weights(base_model.embeddings.word_embeddings)
-    return model
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -250,16 +241,17 @@ def main():
         help="The output directory where the benchmarks would be put.",
     )
     parser.add_argument(
-        "--randomize",
+        "--experiment",
         type=str,
         default="none",
-        help="The components to randomize in the model.")
+        required=True,
+        help="The randomization experiment to run.")
     parser.add_argument(
-        "--experiments_dir",
+        "--models_dir",
         default=None,
         type=str,
         required=True,
-        help="The experiments directory where all the tasks with respective model seed checkpoints are stored.",
+        help="The fine-tuned models directory where all the tasks with respective model seed checkpoints are stored.",
     )
     parser.add_argument(
         "--model_type",
@@ -303,7 +295,8 @@ def main():
     args.n_gpu = 0 if args.no_cuda else torch.cuda.device_count()
     args.device = device
     args.model_type = args.model_type.lower()
-    args.randomize = args.randomize.lower()
+    args.experiment = args.experiment.lower()
+    args.output_dir = f"{args.output_dir}/{args.experiment}"
 
     # Setup logging
     logging.basicConfig(
@@ -315,72 +308,135 @@ def main():
     # Set seed
     set_seed(args)
 
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
-    
-    energy_logs_dir = args.output_dir + f"/{args.randomize}_energy_logs/"
-    if not os.path.exists(energy_logs_dir):
-        os.makedirs(energy_logs_dir)
-
-    tracker = ImpactTracker(energy_logs_dir)
+    tracker = ImpactTracker(args.output_dir)
     tracker.launch_impact_monitor()
 
     # Prepare GLUE task
-    tasks = ["CoLA", "MNLI", "MRPC", "QNLI", "QQP", "RTE", "SST-2", "STS-B", "WNLI"]
-    
-    experiments_path = pathlib.Path(args.experiments_dir)
-    logger.info("Training/evaluation parameters %s", args)
-    data_dir = args.data_dir
+    experiment_map = {
+        "baseline": experiment_baseline,
+        "randomize_embeddings": experiment_randomize_embeddings,
+        "randomize_qkv": experiment_randomize_qkv,
+        "randomize_qkv_together": experiment_randomize_qkv_together
+    }
+    experiment_map[args.experiment](args)
 
-    config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+
+def experiment_baseline(args):
+    results = evaluate_all_tasks_with_randomization(args, lambda x: x)
+    results_file_path = f"{args.output_dir}/results.json"
+    write_results(results, results_file_path)
+
+def experiment_randomize_embeddings(args):
+    def randomize_embeddings(model):
+        for name, module in model.named_modules():
+            if "word_embedding" in name:
+                module.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
+        return model
+
+    results = evaluate_all_tasks_with_randomization(args, randomize_embeddings)
+    results_file_path = f"{args.output_dir}/results.json"
+    write_results(results, results_file_path)
+
+def experiment_randomize_qkv(args):
+    def get_randomizer(component):
+        def randomization_func(model):
+            for name, module in model.named_modules():
+                if component in name:
+                    module.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
+            return model
+        return randomization_func
+
+    for component in tqdm(["query", "key", "value"]):
+        component_name = f"attention.self.{component}"
+        results = evaluate_all_tasks_with_randomization(args, get_randomizer(component_name))
+        results_file_path = f"{args.output_dir}/{component}_layer_all_results.json"
+        write_results(results, results_file_path)
+
+        for layer in tqdm(range(12)):
+            component_name = f"layer.{layer}.attention.self.{component}"
+            results = evaluate_all_tasks_with_randomization(args, get_randomizer(component_name))
+            results_file_path = f"{args.output_dir}/{component}_layer_{layer}_results.json"
+            write_results(results, results_file_path)
+    
+def experiment_randomize_qkv_together(args):
+    def get_randomizer(components):
+        def randomization_func(model):
+            for name, module in model.named_modules():
+                if any((component in name for component in components)):
+                    module.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
+            return model
+        return randomization_func
+    components = ["attention.self.query", "attention.self.key", "attention.self.value"]
+    results = evaluate_all_tasks_with_randomization(args, get_randomizer(components))
+    results_file_path = f"{args.output_dir}/qkv_layer_all_results.json"
+    write_results(results, results_file_path)
+
+    for layer in tqdm(range(12)):
+        layer_components = [f"layer.{layer}.{component}" for component in components]
+        results = evaluate_all_tasks_with_randomization(args, get_randomizer(layer_components))
+        results_file_path = f"{args.output_dir}/qkv_layer_{layer}_results.json"
+        write_results(results, results_file_path)
+    
+
+
+def evaluate_all_tasks_with_randomization(args, randomization_func):
+    # Prepare GLUE task
+    tasks = ["CoLA", "MNLI", "MRPC", "QNLI", "QQP", "RTE", "SST-2", "STS-B", "WNLI"]
     all_task_results = {}
     for task in tasks:
-        task_dir = experiments_path / task
-        args.task_name = task.lower()
-        seed_results = []
-        seed_model_dirs = task_dir.glob("seed_*")
-        processor = processors[args.task_name]()
-        args.output_mode = output_modes[args.task_name]
-        label_list = processor.get_labels()
-        num_labels = len(label_list)
+        all_task_results[task] = evaluate_task_with_randomization(args, task, randomization_func)
+    return all_task_results
 
-        for seed_dir in seed_model_dirs:
-            args.model_name_or_path = str(seed_dir)
-            config = config_class.from_pretrained(
-                args.model_name_or_path,
-                num_labels=num_labels,
-                finetuning_task=args.task_name,
-                cache_dir=args.cache_dir if args.cache_dir else None,
-            )
-            tokenizer = tokenizer_class.from_pretrained(
-                args.model_name_or_path,
-                do_lower_case=args.do_lower_case,
-                cache_dir=args.cache_dir if args.cache_dir else None,
-            )
-            model = model_class.from_pretrained(
-                args.model_name_or_path,
-                from_tf=bool(".ckpt" in args.model_name_or_path),
-                config=config,
-                cache_dir=args.cache_dir if args.cache_dir else None,
-            )
-            set_seed(args)
-            model = apply_randomization(model, args.randomize)
 
-            model.to(args.device)            
-            # Set task specific args
-            args.data_dir = f"{data_dir}/{task}"
-
-            result = evaluate(args, model, tokenizer)
-            seed_results.append(result)
-        task_result = {}
-        for key in seed_results[0]:
-            task_result[key] = scipy.stats.norm.fit([result[key] for result in seed_results])
-        all_task_results[task] = task_result
+def evaluate_task_with_randomization(args, task: str, randomization_func):
+    models_dir = pathlib.Path(args.models_dir)
+    task_dir = models_dir / task
+    task_name = task.lower()
     
-    output_file_path = f"{args.output_dir}/benchmarks_{args.randomize}.json"
-    with open(output_file_path, "w") as fp:
-        json.dump(all_task_results, fp)
+    processor = processors[task_name]()
+    args.output_mode = output_modes[task_name]
+    label_list = processor.get_labels()
+    num_labels = len(label_list)
 
+    config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+
+    seed_results = []
+    for seed_dir in task_dir.glob("seed_*"):
+        args.model_name_or_path = str(seed_dir)
+        config = config_class.from_pretrained(
+            args.model_name_or_path,
+            num_labels=num_labels,
+            finetuning_task=task_name,
+            cache_dir=args.cache_dir if args.cache_dir else None,
+        )
+        tokenizer = tokenizer_class.from_pretrained(
+            args.model_name_or_path,
+            do_lower_case=args.do_lower_case,
+            cache_dir=args.cache_dir if args.cache_dir else None,
+        )
+        model = model_class.from_pretrained(
+            args.model_name_or_path,
+            from_tf=bool(".ckpt" in args.model_name_or_path),
+            config=config,
+            cache_dir=args.cache_dir if args.cache_dir else None,
+        )
+        set_seed(args)
+        model = randomization_func(model)
+
+        model.to(args.device)            
+        # Set task specific args
+        data_dir = f"{args.data_dir}/{task}"
+
+        result = evaluate(args, task_name, data_dir, model, tokenizer)
+        seed_results.append(result)
+    task_result = {}
+    for key in seed_results[0]:
+        task_result[key] = scipy.stats.norm.fit([result[key] for result in seed_results])
+    return task_result
+
+def write_results(results, output_file_path):
+    with open(output_file_path, "w") as fp:
+        json.dump(results, fp, indent=4, sort_keys=True)
 
 if __name__ == "__main__":
     main()
