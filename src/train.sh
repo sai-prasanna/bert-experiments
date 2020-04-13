@@ -1,5 +1,7 @@
 export GLUE_DIR=../data/glue
 export CUDA_VISIBLE_DEVICES=0
+mkdir ../finetuned_models/
+
 for TASK_NAME in "CoLA" "SST-2" "MRPC" "STS-B" "QQP" "MNLI" "QNLI" "RTE" "WNLI"
 do
     mkdir -p ../experiments/$TASK_NAME/
@@ -17,7 +19,7 @@ do
         --per_gpu_train_batch_size 32 \
         --learning_rate 2e-5 \
         --num_train_epochs 3.0 \
-        --output_dir ../experiments/$TASK_NAME/seed_$SEED/ \
+        --output_dir ../finetuned_models/$TASK_NAME/seed_$SEED/ \
         --seed $SEED
     done
 done
