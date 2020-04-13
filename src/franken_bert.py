@@ -23,6 +23,7 @@ import logging
 import os
 import random
 import pathlib
+import copy
 
 import numpy as np
 import torch
@@ -316,13 +317,16 @@ def main():
         "baseline": experiment_baseline,
         "randomize_embeddings": experiment_randomize_embeddings,
         "randomize_qkv": experiment_randomize_qkv,
-        "randomize_qkv_together": experiment_randomize_qkv_together
+        "randomize_qkv_together": experiment_randomize_qkv_together,
+        "zero_out_qkv": experiment_zero_out_qkv,
+        "revert_embeddings": experiment_revert_embeddings,
+        "revert_qkv": experiment_revert_qkv
     }
     experiment_map[args.experiment](args)
 
 
 def experiment_baseline(args):
-    results = evaluate_all_tasks_with_randomization(args, lambda x: x)
+    results = evaluate_all_tasks_with_initialization(args, lambda x: x)
     results_file_path = f"{args.output_dir}/results.json"
     write_results(results, results_file_path)
 
@@ -333,9 +337,33 @@ def experiment_randomize_embeddings(args):
                 module.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
         return model
 
-    results = evaluate_all_tasks_with_randomization(args, randomize_embeddings)
+    results = evaluate_all_tasks_with_initialization(args, randomize_embeddings)
     results_file_path = f"{args.output_dir}/results.json"
     write_results(results, results_file_path)
+
+def experiment_revert_embeddings(args):
+    _, model_class, _ = MODEL_CLASSES[args.model_type]
+    
+    if args.model_type != "bert":
+        raise NotImplementedError("Logic for non bert models are not implemented for this experiment.")
+    
+    if args.do_lower_case:
+        orignal_model = model_class.from_pretrained("bert-base-uncased")
+    else:
+        orignal_model = model_class.from_pretrained("bert-base-cased")
+    orignal_model = orignal_model.eval()
+    original_model_map = {name: module for name, module in orignal_model.named_modules()}
+
+    def revert_embeddings(model):
+        for name, module in model.named_modules():
+            if "word_embedding" in name:
+                module.weight.data = copy.deepcopy(original_model_map[name].weight.data)
+        return model
+
+    results = evaluate_all_tasks_with_initialization(args, revert_embeddings)
+    results_file_path = f"{args.output_dir}/revert_embeddings_results.json"
+    write_results(results, results_file_path)
+
 
 def experiment_randomize_qkv(args):
     def get_randomizer(component):
@@ -348,13 +376,13 @@ def experiment_randomize_qkv(args):
 
     for component in tqdm(["query", "key", "value"]):
         component_name = f"attention.self.{component}"
-        results = evaluate_all_tasks_with_randomization(args, get_randomizer(component_name))
+        results = evaluate_all_tasks_with_initialization(args, get_randomizer(component_name))
         results_file_path = f"{args.output_dir}/{component}_layer_all_results.json"
         write_results(results, results_file_path)
 
         for layer in tqdm(range(12)):
             component_name = f"layer.{layer}.attention.self.{component}"
-            results = evaluate_all_tasks_with_randomization(args, get_randomizer(component_name))
+            results = evaluate_all_tasks_with_initialization(args, get_randomizer(component_name))
             results_file_path = f"{args.output_dir}/{component}_layer_{layer}_results.json"
             write_results(results, results_file_path)
     
@@ -367,28 +395,99 @@ def experiment_randomize_qkv_together(args):
             return model
         return randomization_func
     components = ["attention.self.query", "attention.self.key", "attention.self.value"]
-    results = evaluate_all_tasks_with_randomization(args, get_randomizer(components))
+    results = evaluate_all_tasks_with_initialization(args, get_randomizer(components))
     results_file_path = f"{args.output_dir}/qkv_layer_all_results.json"
     write_results(results, results_file_path)
 
     for layer in tqdm(range(12)):
         layer_components = [f"layer.{layer}.{component}" for component in components]
-        results = evaluate_all_tasks_with_randomization(args, get_randomizer(layer_components))
+        results = evaluate_all_tasks_with_initialization(args, get_randomizer(layer_components))
         results_file_path = f"{args.output_dir}/qkv_layer_{layer}_results.json"
         write_results(results, results_file_path)
     
+def experiment_zero_out_qkv(args):
+    def get_randomizer(components):
+        def randomization_func(model):
+            for name, module in model.named_modules():
+                if any((component in name for component in components)):
+                    module.weight.data.zero_()
+            return model
+        return randomization_func
+    
+    for component in ["query", "key", "value"]:
+        components = [f"attention.self.{component}"]
+        results = evaluate_all_tasks_with_initialization(args, get_randomizer(components))
+        results_file_path = f"{args.output_dir}/{component}_layer_all_results.json"
+        write_results(results, results_file_path)
 
+    components = [f"attention.self.query", f"attention.self.key"]
+    results = evaluate_all_tasks_with_initialization(args, get_randomizer(components))
+    results_file_path = f"{args.output_dir}/qk_layer_all_results.json"
+    write_results(results, results_file_path)
 
-def evaluate_all_tasks_with_randomization(args, randomization_func):
+    components = [f"attention.self.query", f"attention.self.key", "attention.self.value"]
+    results = evaluate_all_tasks_with_initialization(args, get_randomizer(components))
+    results_file_path = f"{args.output_dir}/qkv_layer_all_results.json"
+    write_results(results, results_file_path)
+
+def experiment_revert_qkv(args):
+    _, model_class, _ = MODEL_CLASSES[args.model_type]
+    
+    if args.model_type != "bert":
+        raise NotImplementedError("Logic for non bert models are not implemented for this experiment.")
+    
+    if args.do_lower_case:
+        orignal_model = model_class.from_pretrained("bert-base-uncased")
+    else:
+        orignal_model = model_class.from_pretrained("bert-base-cased")
+    orignal_model = orignal_model.eval()
+    original_model_map = {name: module for name, module in orignal_model.named_modules()}
+
+    def get_reverter(components):
+        def revert_func(model):
+            for name, module in model.named_modules():
+                if any((component in name for component in components)):
+                    module.weight.data = copy.deepcopy(original_model_map[name].weight.data)
+                    module.bias.data = copy.deepcopy(original_model_map[name].bias.data)
+            return model
+        return revert_func
+    
+    for component in ["query", "key", "value"]:
+        components = [f"attention.self.{component}"]
+        results = evaluate_all_tasks_with_initialization(args, get_reverter(components))
+        results_file_path = f"{args.output_dir}/{component}_layer_all_results.json"
+        write_results(results, results_file_path)
+
+    components = ["attention.self.query", "attention.self.key"]
+    results = evaluate_all_tasks_with_initialization(args, get_reverter(components))
+    results_file_path = f"{args.output_dir}/qk_layer_all_results.json"
+    write_results(results, results_file_path)
+
+    components = ["attention.self.query", "attention.self.value"]
+    results = evaluate_all_tasks_with_initialization(args, get_reverter(components))
+    results_file_path = f"{args.output_dir}/qv_layer_all_results.json"
+    write_results(results, results_file_path)
+
+    components = ["attention.self.value", "attention.self.key"]
+    results = evaluate_all_tasks_with_initialization(args, get_reverter(components))
+    results_file_path = f"{args.output_dir}/vk_layer_all_results.json"
+    write_results(results, results_file_path)
+
+    components = ["attention.self.query", "attention.self.key", "attention.self.value"]
+    results = evaluate_all_tasks_with_initialization(args, get_reverter(components))
+    results_file_path = f"{args.output_dir}/qkv_layer_all_results.json"
+    write_results(results, results_file_path)
+
+def evaluate_all_tasks_with_initialization(args, initialization_func):
     # Prepare GLUE task
     tasks = ["CoLA", "MNLI", "MRPC", "QNLI", "QQP", "RTE", "SST-2", "STS-B", "WNLI"]
     all_task_results = {}
     for task in tasks:
-        all_task_results[task] = evaluate_task_with_randomization(args, task, randomization_func)
+        all_task_results[task] = evaluate_task_with_initialization(args, task, initialization_func)
     return all_task_results
 
 
-def evaluate_task_with_randomization(args, task: str, randomization_func):
+def evaluate_task_with_initialization(args, task: str, initialization_func):
     models_dir = pathlib.Path(args.models_dir)
     task_dir = models_dir / task
     task_name = task.lower()
@@ -421,7 +520,7 @@ def evaluate_task_with_randomization(args, task: str, randomization_func):
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
         set_seed(args)
-        model = randomization_func(model)
+        model = initialization_func(model)
 
         model.to(args.device)            
         # Set task specific args
