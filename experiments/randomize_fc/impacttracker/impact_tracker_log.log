@@ -1,0 +1,10 @@
+2020-04-15 13:22:32,175 - experiment_impact_tracker.compute_tracker.ImpactTracker - ERROR - Encountered exception within power monitor thread!
+2020-04-15 13:22:32,181 - experiment_impact_tracker.compute_tracker.ImpactTracker - ERROR -   File "/home/sai/miniconda3/envs/bertexp/lib/python3.7/site-packages/experiment_impact_tracker/compute_tracker.py", line 105, in launch_power_monitor
+    _sample_and_log_power(log_dir, initial_info, logger=logger)
+  File "/home/sai/miniconda3/envs/bertexp/lib/python3.7/site-packages/experiment_impact_tracker/compute_tracker.py", line 69, in _sample_and_log_power
+    results = header["routing"]["function"](process_ids, logger=logger, region=initial_info['region']['id'], log_dir=log_dir)
+  File "/home/sai/miniconda3/envs/bertexp/lib/python3.7/site-packages/experiment_impact_tracker/disk/common.py", line 33, in measure_disk_speed_at_dir
+    writetofile(filename, filesize)
+  File "/home/sai/miniconda3/envs/bertexp/lib/python3.7/site-packages/experiment_impact_tracker/disk/common.py", line 16, in writetofile
+    f.write(mystring)
+

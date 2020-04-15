@@ -24,6 +24,7 @@ import os
 import random
 import pathlib
 import copy
+import re
 
 import numpy as np
 import torch
@@ -315,12 +316,18 @@ def main():
     # Prepare GLUE task
     experiment_map = {
         "baseline": experiment_baseline,
+        
         "randomize_embeddings": experiment_randomize_embeddings,
         "randomize_qkv": experiment_randomize_qkv,
+        "randomize_fc": experiment_randomize_fc,
+
         "randomize_qkv_together": experiment_randomize_qkv_together,
+        "randomize_qkv_together_pairwise": experiment_randomize_qkv_together_pairwise,
         "zero_out_qkv": experiment_zero_out_qkv,
+        
         "revert_embeddings": experiment_revert_embeddings,
-        "revert_qkv": experiment_revert_qkv
+        "revert_qkv": experiment_revert_qkv,
+        "revert_fc": experiment_revert_fc
     }
     experiment_map[args.experiment](args)
 
@@ -399,12 +406,29 @@ def experiment_randomize_qkv_together(args):
     results_file_path = f"{args.output_dir}/qkv_layer_all_results.json"
     write_results(results, results_file_path)
 
-    for layer in tqdm(range(12)):
+    for layer_1, layer_2 in tqdm(range(12)):
         layer_components = [f"layer.{layer}.{component}" for component in components]
         results = evaluate_all_tasks_with_initialization(args, get_randomizer(layer_components))
         results_file_path = f"{args.output_dir}/qkv_layer_{layer}_results.json"
         write_results(results, results_file_path)
-    
+
+def experiment_randomize_qkv_together_pairwise(args):
+    def get_randomizer(components):
+        def randomization_func(model):
+            for name, module in model.named_modules():
+                if any((component in name for component in components)):
+                    module.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
+            return model
+        return randomization_func
+    components = ["attention.self.query", "attention.self.key", "attention.self.value"]
+    for layer_1, layer_2 in zip(range(0, 11), range(1,12)):
+        layer_components = [f"layer.{layer_1}.{component}" for component in components]
+        layer_components.extend([f"layer.{layer_2}.{component}" for component in components])
+        results = evaluate_all_tasks_with_initialization(args, get_randomizer(layer_components))
+        results_file_path = f"{args.output_dir}/qkv_layers_{layer_1}_{layer_2}_results.json"
+        write_results(results, results_file_path)
+
+
 def experiment_zero_out_qkv(args):
     def get_randomizer(components):
         def randomization_func(model):
@@ -429,6 +453,41 @@ def experiment_zero_out_qkv(args):
     results = evaluate_all_tasks_with_initialization(args, get_randomizer(components))
     results_file_path = f"{args.output_dir}/qkv_layer_all_results.json"
     write_results(results, results_file_path)
+
+
+def experiment_randomize_fc(args):
+    def get_randomizer(component_pattern):
+        def randomization_func(model):
+            for name, module in model.named_modules():
+                if re.search(component_pattern, name):
+                    logger.info(f"\nMatched - {name}\n")
+                    module.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
+            return model
+        return randomization_func
+
+    pattern = r"layer.\d.attention.output.dense|layer.\d.intermediate.dense|layer.\d.output.dense"
+    results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
+    results_file_path = f"{args.output_dir}/fc_a_i_o_layer_all_results.json"
+    write_results(results, results_file_path)
+
+    pattern = r"layer.\d.attention.output.dense"
+    results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
+    results_file_path = f"{args.output_dir}/fc_a_all_results.json"
+    write_results(results, results_file_path)
+
+    pattern = r"layer.\d.intermediate.dense"
+    results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
+    results_file_path = f"{args.output_dir}/fc_i_all_results.json"
+    write_results(results, results_file_path)
+
+    pattern = r"layer.\d.output.dense"
+    results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
+    results_file_path = f"{args.output_dir}/fc_o_all_results.json"
+    write_results(results, results_file_path)
+
+
+   
+
 
 def experiment_revert_qkv(args):
     _, model_class, _ = MODEL_CLASSES[args.model_type]
@@ -477,6 +536,51 @@ def experiment_revert_qkv(args):
     results = evaluate_all_tasks_with_initialization(args, get_reverter(components))
     results_file_path = f"{args.output_dir}/qkv_layer_all_results.json"
     write_results(results, results_file_path)
+
+
+def experiment_revert_fc(args):
+    _, model_class, _ = MODEL_CLASSES[args.model_type]
+    
+    if args.model_type != "bert":
+        raise NotImplementedError("Logic for non bert models are not implemented for this experiment.")
+    
+    if args.do_lower_case:
+        orignal_model = model_class.from_pretrained("bert-base-uncased")
+    else:
+        orignal_model = model_class.from_pretrained("bert-base-cased")
+    orignal_model = orignal_model.eval()
+    original_model_map = {name: module for name, module in orignal_model.named_modules()}
+
+    def get_reverter(component_pattern):
+        def init_func(model):
+            for name, module in model.named_modules():
+                if re.search(component_pattern, name):
+                    module.weight.data = copy.deepcopy(original_model_map[name].weight.data)
+                    module.bias.data = copy.deepcopy(original_model_map[name].bias.data)
+            return model
+        return init_func
+
+    pattern = r"layer.\d.attention.output.dense|layer.\d.intermediate.dense|layer.\d.output.dense"
+    results = evaluate_all_tasks_with_initialization(args, get_reverter(pattern))
+    results_file_path = f"{args.output_dir}/fc_a_i_o_layer_all_results.json"
+    write_results(results, results_file_path)
+
+    pattern = r"layer.\d.attention.output.dense"
+    results = evaluate_all_tasks_with_initialization(args, get_reverter(pattern))
+    results_file_path = f"{args.output_dir}/fc_a_all_results.json"
+    write_results(results, results_file_path)
+
+    pattern = r"layer.\d.intermediate.dense"
+    results = evaluate_all_tasks_with_initialization(args, get_reverter(pattern))
+    results_file_path = f"{args.output_dir}/fc_i_all_results.json"
+    write_results(results, results_file_path)
+
+    pattern = r"layer.\d.output.dense"
+    results = evaluate_all_tasks_with_initialization(args, get_reverter(pattern))
+    results_file_path = f"{args.output_dir}/fc_o_all_results.json"
+    write_results(results, results_file_path)
+
+
 
 def evaluate_all_tasks_with_initialization(args, initialization_func):
     # Prepare GLUE task
