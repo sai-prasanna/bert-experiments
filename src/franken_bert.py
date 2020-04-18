@@ -154,15 +154,33 @@ def evaluate(args, task_name, data_dir,  model, tokenizer):
                 out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
 
         eval_loss = eval_loss / nb_eval_steps
+
+        processor = processors[eval_task]()
+        label_list = processor.get_labels()
+        if eval_task in ["mnli", "mnli-mm"] and args.model_type in ["roberta", "xlmroberta"]:
+            # HACK(label indices are swapped in RoBERTa pretrained model)
+            label_list[1], label_list[2] = label_list[2], label_list[1]
+        label_map = {int(i): label for i, label in enumerate(label_list)}
+
         if args.output_mode == "classification":
             preds = np.argmax(preds, axis=1)
+            pred_outputs = [label_map[p] for p in preds]
         elif args.output_mode == "regression":
             preds = np.squeeze(preds)
+            pred_outputs = [float(p) for p in preds]
         result = compute_metrics(eval_task, preds, out_label_ids)
+        
         for k, v in result.items():
             if "mnli" in eval_task:
                 k = f"{eval_task}_{k}"
             results[k] = v
+        
+        if "predictions" not in results:
+            results["predictions"] = {}
+        if "mnli" in eval_task:
+            results["predictions"][eval_task] = pred_outputs
+        else:
+            results["predictions"] = pred_outputs
     return results
 
 
@@ -249,6 +267,9 @@ def main():
         required=True,
         help="The randomization experiment to run.")
     parser.add_argument(
+        "--include_predictions", action="store_true", help="Set this flag if you want to save the predictions for the experiment.",
+    )
+    parser.add_argument(
         "--models_dir",
         default=None,
         type=str,
@@ -326,7 +347,7 @@ def main():
         "zero_out_qkv": experiment_zero_out_qkv,
         
         "randomize_full_layerwise": experiment_randomize_full_layerwise,
-
+        "randomize_components": experiment_randomize_components,
         "revert_embeddings": experiment_revert_embeddings,
         "revert_qkv": experiment_revert_qkv,
         "revert_fc": experiment_revert_fc
@@ -337,6 +358,36 @@ def main():
 def experiment_baseline(args):
     results = evaluate_all_tasks_with_initialization(args, lambda x: x)
     results_file_path = f"{args.output_dir}/results.json"
+    write_results(results, results_file_path)
+
+
+def experiment_randomize_components(args):
+    def get_randomizer(component_pattern):
+        def randomization_func(model):
+            for name, module in model.named_modules():
+                if re.search(component_pattern, name):
+                    logger.info(f"\nMatched - {name}\n")
+                    module.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
+            return model
+        return randomization_func
+
+    results = evaluate_all_tasks_with_initialization(args, lambda x: x)
+    results_file_path = f"{args.output_dir}/baseline.json"
+    write_results(results, results_file_path)
+
+    results = evaluate_all_tasks_with_initialization(args, get_randomizer(r"word_embedding"))
+    results_file_path = f"{args.output_dir}/randomize_embeddings.json"
+    write_results(results, results_file_path)
+    
+    pattern = r"layer.\d.(attention.self.value|attention.self.query|attention.self.key)"
+
+    results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
+    results_file_path = f"{args.output_dir}/randomize_qkv.json"
+    write_results(results, results_file_path)
+    
+    pattern = r"layer.\d.(attention.output.dense|intermediate.dense|output.dense)"
+    results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
+    results_file_path = f"{args.output_dir}/randomize_all.json"
     write_results(results, results_file_path)
 
 def experiment_randomize_embeddings(args):
@@ -408,7 +459,7 @@ def experiment_randomize_qkv_together(args):
     results_file_path = f"{args.output_dir}/qkv_layer_all_results.json"
     write_results(results, results_file_path)
 
-    for layer_1, layer_2 in tqdm(range(12)):
+    for layer in range(12):
         layer_components = [f"layer.{layer}.{component}" for component in components]
         results = evaluate_all_tasks_with_initialization(args, get_randomizer(layer_components))
         results_file_path = f"{args.output_dir}/qkv_layer_{layer}_results.json"
@@ -487,6 +538,11 @@ def experiment_randomize_fc(args):
     results_file_path = f"{args.output_dir}/fc_o_all_results.json"
     write_results(results, results_file_path)
 
+    for layer in range(12):
+        pattern = fr"layer.{layer}.(attention.output.dense|intermediate.dense|output.dense)"
+        results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
+        results_file_path = f"{args.output_dir}/fc_a_i_o_layer_{layer}_results.json"
+        write_results(results, results_file_path)
 
 
 def experiment_randomize_full_layerwise(args):
@@ -612,7 +668,10 @@ def evaluate_all_tasks_with_initialization(args, initialization_func):
     tasks = ["CoLA", "MNLI", "MRPC", "QNLI", "QQP", "RTE", "SST-2", "STS-B", "WNLI"]
     all_task_results = {}
     for task in tasks:
-        all_task_results[task] = evaluate_task_with_initialization(args, task, initialization_func)
+        metrics, predictions = evaluate_task_with_initialization(args, task, initialization_func)
+        all_task_results[task] = metrics
+        if args.include_predictions:
+            all_task_results[task]["predictions"] = predictions
     return all_task_results
 
 
@@ -629,6 +688,7 @@ def evaluate_task_with_initialization(args, task: str, initialization_func):
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
 
     seed_results = []
+    seed_predictions = {}
     for seed_dir in task_dir.glob("seed_*"):
         args.model_name_or_path = str(seed_dir)
         config = config_class.from_pretrained(
@@ -654,13 +714,15 @@ def evaluate_task_with_initialization(args, task: str, initialization_func):
         model.to(args.device)            
         # Set task specific args
         data_dir = f"{args.data_dir}/{task}"
-
+        
         result = evaluate(args, task_name, data_dir, model, tokenizer)
+        seed_predictions[seed_dir.stem] = result["predictions"]
+        del result["predictions"]
         seed_results.append(result)
     task_result = {}
     for key in seed_results[0]:
         task_result[key] = scipy.stats.norm.fit([result[key] for result in seed_results])
-    return task_result
+    return task_result, seed_predictions
 
 def write_results(results, output_file_path):
     with open(output_file_path, "w") as fp:
