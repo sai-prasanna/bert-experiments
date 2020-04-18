@@ -325,6 +325,8 @@ def main():
         "randomize_qkv_together_pairwise": experiment_randomize_qkv_together_pairwise,
         "zero_out_qkv": experiment_zero_out_qkv,
         
+        "randomize_full_layerwise": experiment_randomize_full_layerwise,
+
         "revert_embeddings": experiment_revert_embeddings,
         "revert_qkv": experiment_revert_qkv,
         "revert_fc": experiment_revert_fc
@@ -486,7 +488,30 @@ def experiment_randomize_fc(args):
     write_results(results, results_file_path)
 
 
-   
+
+def experiment_randomize_full_layerwise(args):
+    def get_randomizer(component_pattern):
+        def randomization_func(model):
+            for name, module in model.named_modules():
+                if re.search(component_pattern, name):
+                    logger.info(f"\nMatched - {name}\n")
+                    module.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
+                    module.bias.data.zero_()
+            return model
+        return randomization_func
+    
+    for layer_1, layer_2 in zip(range(0, 11), range(1,12)):
+        pattern = fr"layer.({layer_1}|{layer_2}).(attention.self.value|attention.self.query|attention.self.key|attention.output.dense|intermediate.dense|output.dense)"
+        results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
+        results_file_path = f"{args.output_dir}/randomize_layers_{layer_1}_{layer_2}_results.json"
+        write_results(results, results_file_path)
+
+    for layer in range(12):
+        pattern = fr"layer.{layer}.(attention.self.value|attention.self.query|attention.self.key|attention.output.dense|intermediate.dense|output.dense)"
+        results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
+        results_file_path = f"{args.output_dir}/randomize_layer_{layer}_results.json"
+        write_results(results, results_file_path)
+    
 
 
 def experiment_revert_qkv(args):
