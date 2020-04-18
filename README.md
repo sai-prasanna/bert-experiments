@@ -1,5 +1,18 @@
 # bert-experiments
 
+Study of fine-tuned models with components randomized or reverted to their pre-trained state.
+
+1. Download the GLUE data using `data/download_glue.py`.
+1. Train 5 seeds on each GLUE task using `src/train.sh`.
+2. Run different experiments using `src/franken_bert.py`.
+3. Compute the frequency baseline using `experiment_analysis/frequency_baseline_calc.ipynb`.
+4. Run the `experiment_analysis/analysis_1.ipynb` to get result graphs.
+
+
+# BERT with HANS experiments
+
+Study pre-trained (frozen) BERT, fine-tuned BERT and randomly intialized BERT on MNLI data using HANS dataset.
+
 Steps to run the experiments:
 
 ### Download MNLI data
