@@ -28,6 +28,7 @@ import re
 
 import numpy as np
 import torch
+from torch import nn
 from torch.utils.data import DataLoader, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
@@ -350,7 +351,10 @@ def main():
         "randomize_components": experiment_randomize_components,
         "revert_embeddings": experiment_revert_embeddings,
         "revert_qkv": experiment_revert_qkv,
-        "revert_fc": experiment_revert_fc
+        "revert_fc": experiment_revert_fc,
+        "revert_embeddings_rotate": experiment_revert_embeddings_rotate,
+
+        "ablate_residuals": experiment_ablate_residuals
     }
     experiment_map[args.experiment](args)
 
@@ -390,6 +394,46 @@ def experiment_randomize_components(args):
     results_file_path = f"{args.output_dir}/randomize_all.json"
     write_results(results, results_file_path)
 
+
+class BertOutputWithoutResiduals(nn.Module):
+    def __init__(self, dense, layer_norm, dropout_layer):
+        super().__init__()
+        self.dense = dense
+        self.LayerNorm = layer_norm
+        self.dropout = dropout_layer
+
+    def forward(self, hidden_states, input_tensor):
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.LayerNorm(hidden_states + hidden_states)
+        return hidden_states
+
+def experiment_ablate_residuals(args):
+    def get_randomizer(residual_remove_layers, component_pattern):
+        def randomization_func(model):
+            for layer_id in residual_remove_layers:
+                output_layer = model.bert.encoder.layer[layer_id].output
+                output_wo_residuals = BertOutputWithoutResiduals(output_layer.dense, output_layer.LayerNorm, output_layer.dropout)
+                model.bert.encoder.layer[layer_id].output = output_wo_residuals
+                logger.info(f"Removed Residuals in {layer_id}\n")
+            logger.info(f"Modified model - \n {model} \n")
+            for name, module in model.named_modules():
+                if component_pattern is not None and re.search(component_pattern, name):
+                    logger.info(f"\nMatched - {name}\n")
+                    module.weight.data.normal_(mean=0.0, std=model.config.initializer_range)
+            return model
+        return randomization_func
+
+    results = evaluate_all_tasks_with_initialization(args,  get_randomizer(list(range(12)), None))
+    results_file_path = f"{args.output_dir}/baseline_remove_res_layer_all.json"
+    write_results(results, results_file_path)
+
+    for layer in range(12):
+        results = evaluate_all_tasks_with_initialization(args,  get_randomizer([layer], None))
+        results_file_path = f"{args.output_dir}/baseline_remove_res_layer_{layer}.json"
+        write_results(results, results_file_path)
+
+
 def experiment_randomize_embeddings(args):
     def randomize_embeddings(model):
         for name, module in model.named_modules():
@@ -424,6 +468,29 @@ def experiment_revert_embeddings(args):
     results_file_path = f"{args.output_dir}/revert_embeddings_results.json"
     write_results(results, results_file_path)
 
+def experiment_revert_embeddings_rotate(args):
+    _, model_class, _ = MODEL_CLASSES[args.model_type]
+    
+    if args.model_type != "bert":
+        raise NotImplementedError("Logic for non bert models are not implemented for this experiment.")
+    
+    if args.do_lower_case:
+        orignal_model = model_class.from_pretrained("bert-base-uncased")
+    else:
+        orignal_model = model_class.from_pretrained("bert-base-cased")
+    orignal_model = orignal_model.eval()
+    original_model_map = {name: module for name, module in orignal_model.named_modules()}
+
+    def revert_embeddings(model):
+        for name, module in model.named_modules():
+            if "word_embedding" in name:
+                module.weight.data[0] = copy.deepcopy(original_model_map[name].weight.data[-1])
+                module.weight.data[1:] = copy.deepcopy(original_model_map[name].weight.data[:-1])
+        return model
+
+    results = evaluate_all_tasks_with_initialization(args, revert_embeddings)
+    results_file_path = f"{args.output_dir}/revert_embeddings_results.json"
+    write_results(results, results_file_path)
 
 def experiment_randomize_qkv(args):
     def get_randomizer(component):
