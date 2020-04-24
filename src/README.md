@@ -18,6 +18,13 @@ Run
 
 Five models for each tasks would be trained and placed in `finetuned_models/` directory.
 
+
+## Generating Random masks
+
+``` sh
+./find_head_masks.sh
+```
+
 ## Evaluating on 5 seeds with different experiment settings
 
 ```sh
@@ -49,3 +56,4 @@ The experiment results will be stored as json with the five seed mean and standa
 | QNLI  | Accuracy                     | 91.53       |
 | RTE   | Accuracy                     | 63.24       |
 | WNLI  | Accuracy                     | 33.80       |
+
