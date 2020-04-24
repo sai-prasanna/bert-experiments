@@ -383,13 +383,13 @@ def experiment_randomize_components(args):
     results_file_path = f"{args.output_dir}/randomize_embeddings.json"
     write_results(results, results_file_path)
     
-    pattern = r"layer.\d.(attention.self.value|attention.self.query|attention.self.key)"
+    pattern = r"layer.\d+.(attention.self.value|attention.self.query|attention.self.key)"
 
     results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
     results_file_path = f"{args.output_dir}/randomize_qkv.json"
     write_results(results, results_file_path)
     
-    pattern = r"layer.\d.(attention.output.dense|intermediate.dense|output.dense)"
+    pattern = r"layer.\d+.(attention.output.dense|intermediate.dense|output.dense)"
     results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
     results_file_path = f"{args.output_dir}/randomize_all.json"
     write_results(results, results_file_path)
@@ -585,22 +585,22 @@ def experiment_randomize_fc(args):
             return model
         return randomization_func
 
-    pattern = r"layer.\d.attention.output.dense|layer.\d.intermediate.dense|layer.\d.output.dense"
+    pattern = r"layer.\d+.attention.output.dense|layer.\d+.intermediate.dense|layer.\d+.output.dense"
     results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
     results_file_path = f"{args.output_dir}/fc_a_i_o_layer_all_results.json"
     write_results(results, results_file_path)
 
-    pattern = r"layer.\d.attention.output.dense"
+    pattern = r"layer.\d+.attention.output.dense"
     results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
     results_file_path = f"{args.output_dir}/fc_a_all_results.json"
     write_results(results, results_file_path)
 
-    pattern = r"layer.\d.intermediate.dense"
+    pattern = r"layer.\d+.intermediate.dense"
     results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
     results_file_path = f"{args.output_dir}/fc_i_all_results.json"
     write_results(results, results_file_path)
 
-    pattern = r"layer.\d.output.dense"
+    pattern = r"layer.\d+.output.dense"
     results = evaluate_all_tasks_with_initialization(args, get_randomizer(pattern))
     results_file_path = f"{args.output_dir}/fc_o_all_results.json"
     write_results(results, results_file_path)
@@ -708,22 +708,22 @@ def experiment_revert_fc(args):
             return model
         return init_func
 
-    pattern = r"layer.\d.attention.output.dense|layer.\d.intermediate.dense|layer.\d.output.dense"
+    pattern = r"layer.\d+.attention.output.dense|layer.\d+.intermediate.dense|layer.\d+.output.dense"
     results = evaluate_all_tasks_with_initialization(args, get_reverter(pattern))
     results_file_path = f"{args.output_dir}/fc_a_i_o_layer_all_results.json"
     write_results(results, results_file_path)
 
-    pattern = r"layer.\d.attention.output.dense"
+    pattern = r"layer.\d+.attention.output.dense"
     results = evaluate_all_tasks_with_initialization(args, get_reverter(pattern))
     results_file_path = f"{args.output_dir}/fc_a_all_results.json"
     write_results(results, results_file_path)
 
-    pattern = r"layer.\d.intermediate.dense"
+    pattern = r"layer.\d+.intermediate.dense"
     results = evaluate_all_tasks_with_initialization(args, get_reverter(pattern))
     results_file_path = f"{args.output_dir}/fc_i_all_results.json"
     write_results(results, results_file_path)
 
-    pattern = r"layer.\d.output.dense"
+    pattern = r"layer.\d+.output.dense"
     results = evaluate_all_tasks_with_initialization(args, get_reverter(pattern))
     results_file_path = f"{args.output_dir}/fc_o_all_results.json"
     write_results(results, results_file_path)
