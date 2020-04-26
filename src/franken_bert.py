@@ -94,6 +94,9 @@ ALL_MODELS = sum(
     (),
 )
 
+from model_bert import BertForSequenceClassification
+from config_bert import BertConfig
+
 MODEL_CLASSES = {
     "bert": (BertConfig, BertForSequenceClassification, BertTokenizer),
     "xlnet": (XLNetConfig, XLNetForSequenceClassification, XLNetTokenizer),
@@ -277,6 +280,7 @@ def main():
         required=True,
         help="The fine-tuned models directory where all the tasks with respective model seed checkpoints are stored.",
     )
+    
     parser.add_argument(
         "--model_type",
         default=None,
@@ -285,6 +289,26 @@ def main():
         help="Model type",
     )
     # Other parameters
+    parser.add_argument(
+        "--head_masks_dir",
+        default=None,
+        type=str,
+        required=False,
+        help="Head masks to be applied before running the experiment. (Used only for baseline experiment tbh)",
+    )
+    parser.add_argument(
+        "--mlp_masks_dir",
+        default=None,
+        type=str,
+        required=False,
+        help="MLP masks to be applied before running the experiment. (Used only for baseline experiment tbh)",
+    )
+    parser.add_argument(
+        "--mask_mode",
+        choices=["use", "invert", "random"], 
+        default="use",
+        help="use,invert,random"
+    )
     parser.add_argument(
         "--cache_dir",
         default="",
@@ -775,6 +799,53 @@ def evaluate_task_with_initialization(args, task: str, initialization_func):
             config=config,
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
+        
+        if args.head_masks_dir is not None:
+            head_mask_file = pathlib.Path(args.head_masks_dir) / task / seed_dir.stem / "head_mask.npy"
+            head_mask = np.load(head_mask_file)
+            if args.mask_mode == "random":
+                logger.info(f"Creating random head_mask with about {head_mask.sum()} elements")
+                p_unpruned = head_mask.sum() / head_mask.size
+                head_mask = np.zeros_like(head_mask)
+                uniform_random = np.random.rand(*head_mask.shape)
+                head_mask[uniform_random < p_unpruned] = 1
+                for layer in range(head_mask.shape[0]):
+                    if head_mask[layer].sum() == 0:
+                        head_to_unprune = np.random.choice(head_mask.shape[1])
+                        logger.info(f"Unpruning head {head_to_unprune} in layer {layer} because randomly we allocated zero heads.")
+                        head_mask[layer][head_to_unprune] = 1
+                logger.info(f"Random head_mask {head_mask} with {head_mask.sum()} elements")
+            elif args.mask_mode == "invert":
+                head_mask = 1 - head_mask
+                for layer in range(head_mask.shape[0]):
+                    if head_mask[layer].sum() == 0:
+                        head_to_unprune = np.random.choice(head_mask.shape[1])
+                        logger.info(f"Unpruning head {head_to_unprune} in layer {layer} because randomly we allocated zero heads.")
+                        head_mask[layer][head_to_unprune] = 1
+                logger.info(f"Invert head_mask {head_mask} with {head_mask.sum()} elements")
+
+            head_mask = torch.from_numpy(head_mask)
+            heads_to_prune = {}
+            for layer in range(len(head_mask)):
+                heads_to_mask = [h[0] for h in (1 - head_mask[layer].long()).nonzero().tolist()]
+                heads_to_prune[layer] = heads_to_mask
+            assert sum(len(h) for h in heads_to_prune.values()) == (1 - head_mask.long()).sum().item()
+            logger.info(f"Pruning heads {heads_to_prune}")
+            model.prune_heads(heads_to_prune)
+        if args.mlp_masks_dir is not None:
+            mlp_mask_file = pathlib.Path(args.mlp_masks_dir) / task / seed_dir.stem / "mlp_mask.npy"
+            mlp_mask = np.load(mlp_mask_file)
+            if args.mask_mode == "random":
+                p_unpruned = mlp_mask.sum() / mlp_mask.size
+                mlp_mask = np.zeros_like(mlp_mask)
+                uniform_random = np.random.rand(*mlp_mask.shape)
+                mlp_mask[uniform_random < p_unpruned] = 1
+            elif args.mask_mode == "invert":
+                mlp_mask = 1 - mlp_mask
+            mlps_to_prune = [h[0] for h in (1 - torch.from_numpy(mlp_mask).long()).nonzero().tolist()]
+            logger.info(f"MLPS to prune - {mlps_to_prune}")
+            model.prune_mlps(mlps_to_prune)
+
         set_seed(args)
         model = initialization_func(model)
 

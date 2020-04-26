@@ -38,6 +38,7 @@ from experiment_impact_tracker.compute_tracker import ImpactTracker
 
 
 logger = logging.getLogger(__name__)
+logging.getLogger("experiment_impact_tracker.compute_tracker.ImpactTracker").disabled = True
 
 
 def entropy(p):
@@ -233,7 +234,7 @@ def prune_heads(args, model, eval_dataloader, head_mask):
         heads_to_mask = [h[0] for h in (1 - head_mask[layer].long()).nonzero().tolist()]
         heads_to_prune[layer] = heads_to_mask
     assert sum(len(h) for h in heads_to_prune.values()) == (1 - head_mask.long()).sum().item()
-    print(heads_to_prune)
+    logger.info(f"{heads_to_prune}")
     model.prune_heads(heads_to_prune)
     pruned_num_params = sum(p.numel() for p in model.parameters())
 

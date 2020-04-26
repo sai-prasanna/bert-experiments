@@ -12,7 +12,7 @@ do
         OUTPUT_DIR=../masks_results/$TASK_NAME/seed_$SEED/
         mkdir -p $OUTPUT_DIR
         export CUDA_VISIBLE_DEVICES=$GPU
-        python run_bertology.py \
+        python find_head_masks.py \
                 --model_type bert \
                 --model_name_or_path ../finetuned_models/$TASK_NAME/seed_$SEED/ \
                 --task_name $TASK_NAME \

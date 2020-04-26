@@ -1,0 +1,14 @@
+2020-04-26 12:43:31,845 - experiment_impact_tracker.compute_tracker.ImpactTracker - ERROR - Encountered exception within power monitor thread!
+2020-04-26 12:43:31,848 - experiment_impact_tracker.compute_tracker.ImpactTracker - ERROR -   File "/home/sai/miniconda3/envs/bertexp/lib/python3.7/site-packages/experiment_impact_tracker/compute_tracker.py", line 105, in launch_power_monitor
+    _sample_and_log_power(log_dir, initial_info, logger=logger)
+  File "/home/sai/miniconda3/envs/bertexp/lib/python3.7/site-packages/experiment_impact_tracker/compute_tracker.py", line 69, in _sample_and_log_power
+    results = header["routing"]["function"](process_ids, logger=logger, region=initial_info['region']['id'], log_dir=log_dir)
+  File "/home/sai/miniconda3/envs/bertexp/lib/python3.7/site-packages/experiment_impact_tracker/gpu/nvidia.py", line 103, in get_nvidia_gpu_power
+    out_str = sp.communicate()
+  File "/home/sai/miniconda3/envs/bertexp/lib/python3.7/subprocess.py", line 964, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+  File "/home/sai/miniconda3/envs/bertexp/lib/python3.7/subprocess.py", line 1715, in _communicate
+    ready = selector.select(timeout)
+  File "/home/sai/miniconda3/envs/bertexp/lib/python3.7/selectors.py", line 415, in select
+    fd_event_list = self._selector.poll(timeout)
+

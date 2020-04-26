@@ -685,6 +685,12 @@ def main():
             logger.info(f"Random head_mask {head_mask} with {head_mask.sum()} elements")
         elif args.head_mask_mode == "invert":
             head_mask = 1 - head_mask
+            for layer in range(head_mask.shape[0]):
+                if head_mask[layer].sum() == 0:
+                    head_to_unprune = np.random.choice(head_mask.shape[1])
+                    logger.info(f"Unpruning head {head_to_unprune} in layer {layer} because randomly we allocated zero heads.")
+                    head_mask[layer][head_to_unprune] = 1
+            logger.info(f"Invert head_mask {head_mask} with {head_mask.sum()} elements")
         
         head_mask = torch.from_numpy(head_mask)
         heads_to_prune = {}

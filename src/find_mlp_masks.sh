@@ -10,7 +10,7 @@ do
         GPU=$2
         OUTPUT_DIR=../mlp_masks_results/$TASK_NAME/seed_$SEED/
         mkdir -p $OUTPUT_DIR
-        CUDA_VISIBLE_DEVICES=$GPU python run_bertology_mlp.py \
+        CUDA_VISIBLE_DEVICES=$GPU python find_mlp_masks.py \
                 --model_type bert \
                 --model_name_or_path ../finetuned_models/$TASK_NAME/seed_$SEED/ \
                 --task_name $TASK_NAME \
