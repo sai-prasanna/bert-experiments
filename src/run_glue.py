@@ -64,13 +64,14 @@ from transformers import glue_output_modes as output_modes
 from transformers import glue_processors as processors
 from experiment_impact_tracker.compute_tracker import ImpactTracker
 
+
 try:
     from torch.utils.tensorboard import SummaryWriter
 except ImportError:
     from tensorboardX import SummaryWriter
 
-
 logger = logging.getLogger(__name__)
+logging.getLogger("experiment_impact_tracker.compute_tracker.ImpactTracker").disabled = True
 
 ALL_MODELS = sum(
     (
@@ -564,6 +565,18 @@ def main():
         help="For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
         "See details at https://nvidia.github.io/apex/amp.html",
     )
+    parser.add_argument(
+        "--head_mask",
+        type=str,
+        default=None,
+        help="Path to head_mask used for pruning the heads of the pre-trained model, before fine-tuning."
+    )
+    parser.add_argument(
+        "--head_mask_mode",
+        choices=["use", "invert", "random"], 
+        default="use",
+        help="use,invert,random"
+    )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument("--server_ip", type=str, default="", help="For distant debugging.")
     parser.add_argument("--server_port", type=str, default="", help="For distant debugging.")
@@ -655,6 +668,33 @@ def main():
             config=config,
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
+
+    if args.head_mask is not None:
+        head_mask = np.load(args.head_mask)
+        if args.head_mask_mode == "random":
+            logger.info(f"Creating random head_mask with about {head_mask.sum()} elements")
+            p_unpruned = head_mask.sum() / head_mask.size
+            head_mask = np.zeros_like(head_mask)
+            uniform_random = np.random.rand(*head_mask.shape)
+            head_mask[uniform_random < p_unpruned] = 1
+            for layer in range(head_mask.shape[0]):
+                if head_mask[layer].sum() == 0:
+                     head_to_unprune = np.random.choice(head_mask.shape[1])
+                     logger.info(f"Unpruning head {head_to_unprune} in layer {layer} because randomly we allocated zero heads.")
+                     head_mask[layer][head_to_unprune] = 1
+            logger.info(f"Random head_mask {head_mask} with {head_mask.sum()} elements")
+        elif args.head_mask_mode == "invert":
+            head_mask = 1 - head_mask
+        
+        head_mask = torch.from_numpy(head_mask)
+        heads_to_prune = {}
+        for layer in range(len(head_mask)):
+            heads_to_mask = [h[0] for h in (1 - head_mask[layer].long()).nonzero().tolist()]
+            heads_to_prune[layer] = heads_to_mask
+        assert sum(len(h) for h in heads_to_prune.values()) == (1 - head_mask.long()).sum().item()
+        logger.info(f"Pruning heads {heads_to_prune}")
+        model.prune_heads(heads_to_prune)
+
     if args.train_mode in ("frozen", "random_frozen"):
         for name, param in model.named_parameters():
             if 'classifier' not in name:  # classifier layer
