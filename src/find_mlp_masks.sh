@@ -1,6 +1,6 @@
 export GLUE_DIR=../data/glue
 export CUDA_VISIBLE_DEVICES=5
-for TASK_NAME in "MNLI" "QNLI" "RTE" "WNLI"
+for TASK_NAME in  "CoLA" "SST-2" "MRPC" "STS-B" "QQP" "MNLI" "QNLI" "RTE" "WNLI"
 do
     echo "Masking" $TASK_NAME
     for i in 1337,0 42,1 86,2 71,3 166,4

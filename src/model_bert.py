@@ -266,9 +266,12 @@ class BertSelfOutput(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states, input_tensor):
-        hidden_states = self.dense(hidden_states)
-        hidden_states = self.dropout(hidden_states)
-        hidden_states = self.LayerNorm(hidden_states + input_tensor)
+        if self.dense:
+            hidden_states = self.dense(hidden_states)
+            hidden_states = self.dropout(hidden_states)
+            hidden_states = self.LayerNorm(hidden_states + input_tensor)
+        else:
+            hidden_states = self.LayerNorm(input_tensor)
         return hidden_states
 
 
@@ -282,6 +285,17 @@ class BertAttention(nn.Module):
     def prune_heads(self, heads):
         if len(heads) == 0:
             return
+        if self.self is None:
+            return
+
+        all_pruned = self.pruned_heads.union(heads)
+        if len(all_pruned) == self.self.num_attention_heads:
+            self.self = None
+            self.output.dense = None
+            # Update hyper params and store pruned heads
+            self.pruned_heads = all_pruned
+            return
+
         mask = torch.ones(self.self.num_attention_heads, self.self.attention_head_size)
         heads = set(heads) - self.pruned_heads  # Convert to set and remove already pruned heads
         for head in heads:
@@ -310,6 +324,8 @@ class BertAttention(nn.Module):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
     ):
+        if self.self is None:
+            return (self.output(None, hidden_states),)
         self_outputs = self.self(
             hidden_states, attention_mask, head_mask, encoder_hidden_states, encoder_attention_mask
         )
@@ -342,7 +358,7 @@ class BertOutput(nn.Module):
 
     def forward(self, hidden_states, input_tensor, mlp_mask):
         if self.dense is None:
-            hidden_states = self.LayerNorm(input_tensor + input_tensor)
+            hidden_states = self.LayerNorm(input_tensor)
         else:
             hidden_states = self.dense(hidden_states)
             hidden_states = self.dropout(hidden_states)
@@ -422,7 +438,10 @@ class BertEncoder(nn.Module):
             hidden_states = layer_outputs[0]
 
             if self.output_attentions:
-                all_attentions = all_attentions + (layer_outputs[1],)
+                if len(layer_outputs) > 1:
+                    all_attentions = all_attentions + (layer_outputs[1],)
+                else:
+                    all_attentions = all_attentions + (None,)
 
         # Add last layer
         if self.output_hidden_states:
@@ -638,7 +657,7 @@ class BertModel(BertPreTrainedModel):
         self.embeddings.word_embeddings = value
 
     def prune_mlps(self, mlps_to_prune):
-        self.config.pruned_mlps.append(mlps_to_prune)
+        self.config.pruned_mlps = mlps_to_prune
         for layer in mlps_to_prune:
             self.encoder.layer[layer].prune_mlp()
 
@@ -1226,6 +1245,12 @@ class BertForSequenceClassification(BertPreTrainedModel):
     
     def prune_mlps(self, mlps_to_prune):
         self.bert.prune_mlps(mlps_to_prune)
+    
+    def init_weights(self):
+        """ Initialize and prunes weights if needed. """
+        super().init_weights()
+        if self.bert.config.pruned_mlps:
+            self.prune_mlps(self.bert.config.pruned_mlps)
 
 @add_start_docstrings(
     """Bert Model with a multiple choice classification head on top (a linear layer on top of

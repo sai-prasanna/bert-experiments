@@ -25,7 +25,7 @@ do
         --num_train_epochs 3.0 \
         --output_dir $MODELS_DIR/$TASK_NAME/seed_$SEED/ \
         --head_mask ../masks_results/$TASK_NAME/seed_$SEED/head_mask.npy \
-        --head_mask_mode invert \
+        --mask_mode invert \
         --save_steps 0 \
         --seed $SEED &
     done

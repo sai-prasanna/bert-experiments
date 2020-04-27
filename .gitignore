@@ -7,4 +7,7 @@ data/MNLI
 *checkpoints.zip
 src/runs/
 data/**/
-finetuned_models/**/
+finetuned_models**/
+finetuned_models_with_mask/
+finetuned_models_with_random_mask/
+finetuned_models_with_invert_mask/
