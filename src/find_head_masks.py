@@ -26,7 +26,7 @@ from datetime import datetime
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, SequentialSampler, Subset
+from torch.utils.data import DataLoader, SequentialSampler, Subset, random_split
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
@@ -35,7 +35,8 @@ from transformers import glue_compute_metrics as compute_metrics
 from transformers import glue_output_modes as output_modes
 from transformers import glue_processors as processors
 from experiment_impact_tracker.compute_tracker import ImpactTracker
-
+from model_bert import BertForSequenceClassification
+from config_bert import BertConfig
 
 logger = logging.getLogger(__name__)
 logging.getLogger("experiment_impact_tracker.compute_tracker.ImpactTracker").disabled = True
@@ -173,17 +174,13 @@ def mask_heads(args, model, eval_dataloader):
 
         # mask heads
         selected_heads_to_mask = []
-        
         for head in current_heads_to_mask:
             if len(selected_heads_to_mask) == num_to_mask or head_importance.view(-1)[head.item()] == float("Inf"):
                 break
             layer_idx = head.item() // model.bert.config.num_attention_heads
             head_idx = head.item() % model.bert.config.num_attention_heads
-            if new_head_mask[layer_idx].sum(-1) > 1: # Don't mask when a layer has only one head.
-                new_head_mask[layer_idx][head_idx] = 0.0
-                selected_heads_to_mask.append(head.item())
-            else:
-                logger.info(f"Wanted to mask the head {head_idx} in layer {layer_idx}; but it was the only head left, so skipping.")
+            new_head_mask[layer_idx][head_idx] = 0.0
+            selected_heads_to_mask.append(head.item())
                 
         if not selected_heads_to_mask:
             break
@@ -337,6 +334,9 @@ def main():
         "--try_masking", action="store_true", help="Whether to try to mask head until a threshold of accuracy."
     )
     parser.add_argument(
+        "--use_train_data", action="store_true", help="Use training set for computing masks"
+    )
+    parser.add_argument(
         "--masking_threshold",
         default=0.9,
         type=float,
@@ -421,6 +421,8 @@ def main():
 
 
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+    MODEL_CLASSES["bert"] = (BertConfig, BertForSequenceClassification, MODEL_CLASSES["bert"][1])
+
     config = config_class.from_pretrained(
         args.config_name if args.config_name else args.model_name_or_path,
         num_labels=num_labels,
@@ -457,6 +459,9 @@ def main():
 
     # Prepare dataset for the GLUE task
     eval_data = load_and_cache_examples(args, args.task_name, tokenizer, evaluate=True)
+    if args.use_train_data:
+        train_data = load_and_cache_examples(args, args.task_name, tokenizer, evaluate=False)
+        eval_data = random_split(train_data, [true_eval_len, len(train_data) - true_eval_len])[0]
     if args.data_subset > 0:
         eval_data = Subset(eval_data, list(range(min(args.data_subset, len(eval_data)))))
     eval_sampler = SequentialSampler(eval_data) if args.local_rank == -1 else DistributedSampler(eval_data)

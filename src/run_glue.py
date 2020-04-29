@@ -63,6 +63,13 @@ from transformers import glue_convert_examples_to_features as convert_examples_t
 from transformers import glue_output_modes as output_modes
 from transformers import glue_processors as processors
 from experiment_impact_tracker.compute_tracker import ImpactTracker
+from model_bert import BertForSequenceClassification
+from config_bert import BertConfig
+from hans_processors import HansProcessor, hans_convert_examples_to_features
+
+
+output_modes["hans"] = "classification"
+processors["hans"] = HansProcessor
 
 
 try:
@@ -90,8 +97,7 @@ ALL_MODELS = sum(
     (),
 )
 
-from model_bert import BertForSequenceClassification
-from config_bert import BertConfig
+
 
 MODEL_CLASSES = {
     "bert": (BertConfig, BertForSequenceClassification, BertTokenizer),
@@ -409,7 +415,12 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
         examples = (
             processor.get_dev_examples(args.data_dir) if evaluate else processor.get_train_examples(args.data_dir)
         )
-        features = convert_examples_to_features(
+        if args.task_name == "hans":
+            create_exaples_to_features_fn = hans_convert_examples_to_features
+        else:
+            create_exaples_to_features_fn = convert_examples_to_features
+
+        features = create_exaples_to_features_fn(
             examples,
             tokenizer,
             label_list=label_list,

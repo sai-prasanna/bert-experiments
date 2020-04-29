@@ -26,7 +26,7 @@ from datetime import datetime
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, SequentialSampler, Subset
+from torch.utils.data import DataLoader, SequentialSampler, Subset, random_split
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
@@ -446,6 +446,9 @@ def main():
         "--try_masking", action="store_true", help="Whether to try to mask head until a threshold of accuracy."
     )
     parser.add_argument(
+        "--use_train_data", action="store_true", help="Use training set for computing masks"
+    )
+    parser.add_argument(
         "--masking_threshold",
         default=0.9,
         type=float,
@@ -528,7 +531,7 @@ def main():
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
-    MODEL_CLASSES["bert"] = (BertConfig, BertForSequenceClassification, MODEL_CLASSES["bert"][1])
+    MODEL_CLASSES["bert"] = (BertConfig, BertForSequenceClassification, MODEL_CLASSES["bert"][2])
 
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     if args.model_type != "bert":
@@ -569,13 +572,19 @@ def main():
     logger.info("Training/evaluation parameters %s", args)
 
     # Prepare dataset for the GLUE task
+
     eval_data = load_and_cache_examples(args, args.task_name, tokenizer, evaluate=True)
+    true_eval_len = len(eval_data)
+    
+    if args.use_train_data:
+        train_data = load_and_cache_examples(args, args.task_name, tokenizer, evaluate=False)
+        eval_data = random_split(train_data, [true_eval_len, len(train_data) - true_eval_len])[0]
+
     if args.data_subset > 0:
         eval_data = Subset(eval_data, list(range(min(args.data_subset, len(eval_data)))))
+
     eval_sampler = SequentialSampler(eval_data) if args.local_rank == -1 else DistributedSampler(eval_data)
     eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.batch_size)
-
-    
 
     # Try head masking (set heads to zero until the score goes under a threshole)
     # and head pruning (remove masked heads and see the effect on the network)
