@@ -809,19 +809,9 @@ def evaluate_task_with_initialization(args, task: str, initialization_func):
                 head_mask = np.zeros_like(head_mask)
                 uniform_random = np.random.rand(*head_mask.shape)
                 head_mask[uniform_random < p_unpruned] = 1
-                for layer in range(head_mask.shape[0]):
-                    if head_mask[layer].sum() == 0:
-                        head_to_unprune = np.random.choice(head_mask.shape[1])
-                        logger.info(f"Unpruning head {head_to_unprune} in layer {layer} because randomly we allocated zero heads.")
-                        head_mask[layer][head_to_unprune] = 1
                 logger.info(f"Random head_mask {head_mask} with {head_mask.sum()} elements")
             elif args.mask_mode == "invert":
                 head_mask = 1 - head_mask
-                for layer in range(head_mask.shape[0]):
-                    if head_mask[layer].sum() == 0:
-                        head_to_unprune = np.random.choice(head_mask.shape[1])
-                        logger.info(f"Unpruning head {head_to_unprune} in layer {layer} because randomly we allocated zero heads.")
-                        head_mask[layer][head_to_unprune] = 1
                 logger.info(f"Invert head_mask {head_mask} with {head_mask.sum()} elements")
             elif args.mask_mode == "bad":
                 total_good = int(head_mask.sum())
@@ -836,11 +826,6 @@ def evaluate_task_with_initialization(args, task: str, initialization_func):
                 for idx in bad_indices:
                     head_mask[idx[0], idx[1]] = 1
                 assert int(head_mask.sum()) == total_good
-                for layer in range(head_mask.shape[0]):
-                    if head_mask[layer].sum() == 0:
-                        head_to_unprune = np.random.choice(head_mask.shape[1])
-                        logger.info(f"Unpruning head {head_to_unprune} in layer {layer} because randomly we allocated zero heads.")
-                        head_mask[layer][head_to_unprune] = 1
             head_mask = torch.from_numpy(head_mask)
             heads_to_prune = {}
             for layer in range(len(head_mask)):
