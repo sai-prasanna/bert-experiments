@@ -69,6 +69,19 @@ from transformers import glue_convert_examples_to_features as convert_examples_t
 from transformers import glue_output_modes as output_modes
 from transformers import glue_processors as processors
 from experiment_impact_tracker.compute_tracker import ImpactTracker
+from hans import HansProcessor, TwoClassMnliProcessor, HansMnliProcessor
+
+output_modes["hans"] = "classification"
+processors["hans"] = HansProcessor
+
+output_modes["hans_mnli"] = "classification"
+processors["hans_mnli"] = HansMnliProcessor
+
+output_modes["mnli_two"] = "classification"
+processors["mnli_two"] = TwoClassMnliProcessor
+
+output_modes["mnli_two_half"] = "classification"
+processors["mnli_two_half"] = TwoClassMnliProcessor
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -757,7 +770,8 @@ def experiment_revert_fc(args):
 
 def evaluate_all_tasks_with_initialization(args, initialization_func):
     # Prepare GLUE task
-    tasks = ["CoLA", "MNLI", "MRPC", "QNLI", "QQP", "RTE", "SST-2", "STS-B", "WNLI"]
+    models_dir = pathlib.Path(args.models_dir)
+    tasks = [p.stem for p in models_dir.iterdir()]
     all_task_results = {}
     for task in tasks:
         metrics, predictions = evaluate_task_with_initialization(args, task, initialization_func)

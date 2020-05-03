@@ -21,7 +21,7 @@ do
                 --output_dir $OUTPUT_DIR \
                 --seed $SEED \
                 --batch_size 64 \
-                --try_masking
+                --try_masking &
     done
     wait;
 done

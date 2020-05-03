@@ -76,6 +76,8 @@ if _has_sklearn:
             return {"acc": simple_accuracy(preds, labels)}
         elif task_name == "mnli_two":
             return {"acc": simple_accuracy(preds, labels)}
+        elif task_name == "mnli_two_half":
+            return {"acc": simple_accuracy(preds, labels)}
         elif task_name == "hans_mnli":
             return {"acc": simple_accuracy(preds, labels)}
         else:
