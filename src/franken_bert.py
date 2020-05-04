@@ -31,6 +31,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
+import torch.nn.utils.prune as prune
 from tqdm import tqdm, trange
 import scipy.stats
 
@@ -392,7 +393,9 @@ def main():
         "revert_fc": experiment_revert_fc,
         "revert_embeddings_rotate": experiment_revert_embeddings_rotate,
 
-        "ablate_residuals": experiment_ablate_residuals
+        "ablate_residuals": experiment_ablate_residuals,
+
+        "ablate_pruning": experiment_prune
     }
     experiment_map[args.experiment](args)
 
@@ -611,6 +614,41 @@ def experiment_zero_out_qkv(args):
     results = evaluate_all_tasks_with_initialization(args, get_randomizer(components))
     results_file_path = f"{args.output_dir}/qkv_layer_all_results.json"
     write_results(results, results_file_path)
+
+def experiment_prune(args):
+    def get_pruner(p, random=False):
+        def pruning_func(model):
+            parameters_to_prune = []
+            for layer in model.bert.encoder.layer:
+                parameters = [
+                    (layer.attention.self.key, 'weight'),
+                    (layer.attention.self.key, 'bias'),
+                    (layer.attention.self.query, 'weight'),
+                    (layer.attention.self.query, 'bias'),
+                    (layer.attention.self.value, 'weight'),
+                    (layer.attention.self.value, 'bias'),
+                    (layer.attention.output.dense, 'weight'),
+                    (layer.attention.output.dense, 'bias'),
+                    (layer.intermediate.dense, 'weight'),
+                    (layer.intermediate.dense, 'bias'),
+                    (layer.output.dense, 'weight'),
+                    (layer.output.dense, 'bias'),
+                ]
+                parameters_to_prune.extend(parameters)
+            prune.global_unstructured(
+                parameters_to_prune,
+                pruning_method=prune.L1Unstructured if not random else prune.RandomUnstructured,
+                amount=p,
+            )
+            return model
+        return pruning_func
+    
+    for p in [0.5, 0.2, 0.7]:
+        for random in [False, True]:
+            results = evaluate_all_tasks_with_initialization(args, get_pruner(p, random))
+            results_file_path = f"{args.output_dir}/p_{p}_{'random' if random else 'magnitude'}.json"
+            write_results(results, results_file_path)
+
 
 
 def experiment_randomize_fc(args):
