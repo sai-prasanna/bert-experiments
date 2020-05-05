@@ -58,7 +58,6 @@ from transformers import (
     XLNetTokenizer,
     get_linear_schedule_with_warmup,
 )
-#from transformers import glue_compute_metrics as compute_metrics
 from glue_metrics import glue_compute_metrics as compute_metrics
 from transformers import glue_convert_examples_to_features as convert_examples_to_features
 from transformers import glue_output_modes as output_modes
@@ -450,6 +449,17 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     dataset = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
     return dataset
 
+from torch.nn.utils.prune import CustomFromMask
+
+def add_masks(model, masks):
+    mask_pruner = CustomFromMask(None)
+    for module_name, module in model.named_modules():
+        weight_key = f"{module_name}.weight_mask"
+        if weight_key in masks:
+            mask_pruner.apply(module, 'weight', masks[weight_key])
+        bias_key = f"{module_name}.bias_mask"
+        if bias_key in masks:
+            mask_pruner.apply(module, 'bias', masks[bias_key])
 
 def main():
     parser = argparse.ArgumentParser()
@@ -591,13 +601,20 @@ def main():
         default=None,
         type=str,
         required=False,
-        help="MLP mask to be applied before running the experiment. (Used only for baseline experiment tbh)",
+        help="MLP mask to be applied before running the experiment.",
     )
     parser.add_argument(
         "--mask_mode",
         choices=["use", "invert", "random", "bad"], 
         default="use",
         help="use,invert,random"
+    )
+    parser.add_argument(
+        "--global_mask",
+        default=None,
+        type=str,
+        required=False,
+        help="Global mask to be applied before running the experiment.",
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument("--server_ip", type=str, default="", help="For distant debugging.")
@@ -691,6 +708,10 @@ def main():
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
 
+    if args.global_mask:
+        masks = torch.load(args.global_mask)
+        add_masks(model, masks)
+
     if args.head_mask is not None:
         head_mask = np.load(args.head_mask)
         if args.mask_mode == "random":
@@ -773,6 +794,8 @@ def main():
         for name, param in model.named_parameters():
             if 'classifier' not in name:  # classifier layer
                 param.requires_grad = False
+    
+
 
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab

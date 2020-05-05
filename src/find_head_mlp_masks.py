@@ -30,24 +30,12 @@ from torch.utils.data import DataLoader, SequentialSampler, Subset, random_split
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
-from run_glue import ALL_MODELS, MODEL_CLASSES, load_and_cache_examples, set_seed
-#from transformers import glue_compute_metrics as compute_metrics
+from run_glue import ALL_MODELS, MODEL_CLASSES, load_and_cache_examples, set_seed, output_modes, processors
 from glue_metrics import glue_compute_metrics as compute_metrics
-from transformers import glue_output_modes as output_modes
-from transformers import glue_processors as processors
 from experiment_impact_tracker.compute_tracker import ImpactTracker
 from model_bert import BertForSequenceClassification
 from config_bert import BertConfig
 from hans import HansProcessor, TwoClassMnliProcessor, HansMnliProcessor
-
-output_modes["hans"] = "classification"
-processors["hans"] = HansProcessor
-
-output_modes["hans_mnli"] = "classification"
-processors["hans_mnli"] = HansMnliProcessor
-
-output_modes["mnli_two"] = "classification"
-processors["mnli_two"] = TwoClassMnliProcessor
 
 logger = logging.getLogger(__name__)
 logging.getLogger("experiment_impact_tracker.compute_tracker.ImpactTracker").disabled = True

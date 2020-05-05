@@ -64,26 +64,12 @@ from transformers import (
     XLNetTokenizer,
     get_linear_schedule_with_warmup,
 )
-#from transformers import glue_compute_metrics as compute_metrics
+from run_glue import processors, output_modes, add_masks
 from glue_metrics import glue_compute_metrics as compute_metrics
 from transformers import glue_convert_examples_to_features as convert_examples_to_features
 from transformers import glue_output_modes as output_modes
 from transformers import glue_processors as processors
 from experiment_impact_tracker.compute_tracker import ImpactTracker
-from hans import HansProcessor, TwoClassMnliProcessor, HansMnliProcessor
-
-output_modes["hans"] = "classification"
-processors["hans"] = HansProcessor
-
-output_modes["hans_mnli"] = "classification"
-processors["hans_mnli"] = HansMnliProcessor
-
-output_modes["mnli_two"] = "classification"
-processors["mnli_two"] = TwoClassMnliProcessor
-
-output_modes["mnli_two_half"] = "classification"
-processors["mnli_two_half"] = TwoClassMnliProcessor
-
 try:
     from torch.utils.tensorboard import SummaryWriter
 except ImportError:
@@ -304,6 +290,20 @@ def main():
         help="Model type",
     )
     # Other parameters
+    parser.add_argument(
+        "--global_masks_dir",
+        default=None,
+        type=str,
+        required=False,
+        help="Global masks to be applied before running the experiment. (Used only for baseline experiment tbh)",
+    )
+    parser.add_argument(
+        "--global_mask_file_name",
+        default=None,
+        type=str,
+        required=False,
+        help="Global masks to be applied before running the experiment. (Used only for baseline experiment tbh)",
+    )
     parser.add_argument(
         "--head_masks_dir",
         default=None,
@@ -852,7 +852,11 @@ def evaluate_task_with_initialization(args, task: str, initialization_func):
             config=config,
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
-        
+        if args.global_masks_dir is not None:
+            mask_file = pathlib.Path(args.global_masks_dir) / task / seed_dir.stem / args.global_mask_file_name
+            masks = torch.load(mask_file)
+            add_masks(model, masks)
+
         if args.head_masks_dir is not None:
             head_mask_file = pathlib.Path(args.head_masks_dir) / task / seed_dir.stem / "head_mask.npy"
             head_mask = np.load(head_mask_file)
