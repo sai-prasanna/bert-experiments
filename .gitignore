@@ -8,3 +8,5 @@ data/MNLI
 src/runs/
 data/**/
 models/**/
+masks/global/
+masks/heads_mlps_full_score/

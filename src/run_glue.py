@@ -28,6 +28,8 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
+import torch.nn.utils.prune as prune
+from transformers.file_utils import WEIGHTS_NAME
 
 from transformers import (
     WEIGHTS_NAME,
@@ -66,6 +68,7 @@ from experiment_impact_tracker.compute_tracker import ImpactTracker
 from model_bert import BertForSequenceClassification
 from config_bert import BertConfig
 from hans import HansProcessor, TwoClassMnliProcessor, HansMnliProcessor
+
 
 output_modes["hans"] = "classification"
 processors["hans"] = HansProcessor
@@ -122,15 +125,29 @@ def set_seed(args):
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
 
+def parameters_to_prune(model):
+    parameters_to_prune = []
+    for layer in model.bert.encoder.layer:
+        parameters = [
+            (layer.attention.self.key, 'weight'),
+            (layer.attention.self.key, 'bias'),
+            (layer.attention.self.query, 'weight'),
+            (layer.attention.self.query, 'bias'),
+            (layer.attention.self.value, 'weight'),
+            (layer.attention.self.value, 'bias'),
+            (layer.attention.output.dense, 'weight'),
+            (layer.attention.output.dense, 'bias'),
+            (layer.intermediate.dense, 'weight'),
+            (layer.intermediate.dense, 'bias'),
+            (layer.output.dense, 'weight'),
+            #(layer.output.dense, 'bias'),
+        ]
+        parameters_to_prune.extend(parameters)
+    return parameters_to_prune
 
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
     if args.local_rank in [-1, 0]:
-        energy_logs_dir = args.output_dir + "/energy_logs/"
-        if not os.path.exists(energy_logs_dir):
-            os.makedirs(energy_logs_dir)
-        tracker = ImpactTracker(energy_logs_dir)
-        tracker.launch_impact_monitor()
         tb_writer = SummaryWriter()
 
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
@@ -221,7 +238,8 @@ def train(args, train_dataset, model, tokenizer):
         epochs_trained, int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0],
     )
     set_seed(args)  # Added here for reproductibility
-    for _ in train_iterator:
+    losses_txt = open("losses_1.txt", "w")
+    for epoch in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
 
@@ -250,8 +268,9 @@ def train(args, train_dataset, model, tokenizer):
                     scaled_loss.backward()
             else:
                 loss.backward()
-
+            
             tr_loss += loss.item()
+            losses_txt.write(f"{loss.item()}\n")
             if (step + 1) % args.gradient_accumulation_steps == 0 or (
                 # last step in epoch but step is always smaller than gradient_accumulation_steps
                 len(epoch_iterator) <= args.gradient_accumulation_steps
@@ -261,7 +280,6 @@ def train(args, train_dataset, model, tokenizer):
                     torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.max_grad_norm)
                 else:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-
                 optimizer.step()
                 scheduler.step()  # Update learning rate schedule
                 model.zero_grad()
@@ -304,10 +322,27 @@ def train(args, train_dataset, model, tokenizer):
                     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
                     logger.info("Saving optimizer and scheduler states to %s", output_dir)
-
+            
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
                 break
+        # if args.local_rank in [-1, 0]:
+        #     output_dir = os.path.join(args.output_dir, "checkpoint-epoch-{}".format(epoch))
+        #     if not os.path.exists(output_dir):
+        #         os.makedirs(output_dir)
+        #     model_to_save = (
+        #         model.module if hasattr(model, "module") else model
+        #     )  # Take care of distributed/parallel training
+        #     model_to_save.save_pretrained(output_dir)
+        #     tokenizer.save_pretrained(output_dir)
+
+        #     torch.save(args, os.path.join(output_dir, "training_args.bin"))
+        #     logger.info("Saving model checkpoint to %s", output_dir)
+
+        #     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
+        #     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
+        #     logger.info("Saving optimizer and scheduler states to %s", output_dir)
+
         if args.max_steps > 0 and global_step > args.max_steps:
             train_iterator.close()
             break
@@ -667,7 +702,11 @@ def main():
         bool(args.local_rank != -1),
         args.fp16,
     )
-
+    energy_logs_dir = args.output_dir + "/energy_logs/"
+    if not os.path.exists(energy_logs_dir):
+        os.makedirs(energy_logs_dir)
+    tracker = ImpactTracker(energy_logs_dir)
+    tracker.launch_impact_monitor()
     # Set seed
     set_seed(args)
 
@@ -707,10 +746,12 @@ def main():
             config=config,
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
-
+    
+    global_mask = None
     if args.global_mask:
-        masks = torch.load(args.global_mask)
-        add_masks(model, masks)
+        global_mask = torch.load(args.global_mask)
+        add_masks(model, global_mask)
+
 
     if args.head_mask is not None:
         head_mask = np.load(args.head_mask)
@@ -720,12 +761,6 @@ def main():
             head_mask = np.zeros_like(head_mask)
             uniform_random = np.random.rand(*head_mask.shape)
             head_mask[uniform_random < p_unpruned] = 1
-            for layer in range(head_mask.shape[0]):
-                if head_mask[layer].sum() == 0:
-                     head_to_unprune = np.random.choice(head_mask.shape[1])
-                     logger.info(f"Unpruning head {head_to_unprune} in layer {layer} because randomly we allocated zero heads.")
-                     head_mask[layer][head_to_unprune] = 1
-            logger.info(f"Random head_mask {head_mask} with {head_mask.sum()} elements")
         elif args.mask_mode == "invert":
             head_mask = 1 - head_mask
             for layer in range(head_mask.shape[0]):
@@ -747,11 +782,6 @@ def main():
             for idx in bad_indices:
                 head_mask[idx[0], idx[1]] = 1
             assert int(head_mask.sum()) == total_good
-            for layer in range(head_mask.shape[0]):
-                if head_mask[layer].sum() == 0:
-                    head_to_unprune = np.random.choice(head_mask.shape[1])
-                    logger.info(f"Unpruning head {head_to_unprune} in layer {layer} because randomly we allocated zero heads.")
-                    head_mask[layer][head_to_unprune] = 1
 
         head_mask = torch.from_numpy(head_mask)
         heads_to_prune = {}
@@ -791,12 +821,11 @@ def main():
         model.prune_mlps(mlps_to_prune)
 
     if args.train_mode in ("frozen", "random_frozen"):
+        logger.info(f"FREEZING model parameters")
         for name, param in model.named_parameters():
             if 'classifier' not in name:  # classifier layer
                 param.requires_grad = False
     
-
-
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
@@ -829,7 +858,7 @@ def main():
         torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
 
         # Load a trained model and vocabulary that you have fine-tuned
-        model = model_class.from_pretrained(args.output_dir)
+        model = load_trained_model(args.output_dir, model_class, config_class)        
         tokenizer = tokenizer_class.from_pretrained(args.output_dir)
         model.to(args.device)
 
@@ -847,14 +876,26 @@ def main():
         for checkpoint in checkpoints:
             global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
             prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
-
-            model = model_class.from_pretrained(checkpoint)
+            model = load_trained_model(checkpoint, model_class, config_class)        
             model.to(args.device)
             result = evaluate(args, model, tokenizer, prefix=prefix)
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
             results.update(result)
 
     return results
+
+
+def load_trained_model(model_dir, model_class, config_class):
+    archive_file = os.path.join(model_dir, WEIGHTS_NAME)
+    state_dict = torch.load(archive_file, map_location="cpu")
+    masks = {k: v for k, v in state_dict.items() if "weight_mask" in k or "bias_mask" in k}
+    logger.info(f"{len(masks)} found")
+    config = config_class.from_pretrained(model_dir)
+    model = model_class(config)
+    if len(masks) > 0:
+        add_masks(model, masks)
+    model.load_state_dict(state_dict)
+    return model
 
 
 if __name__ == "__main__":

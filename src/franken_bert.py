@@ -64,7 +64,7 @@ from transformers import (
     XLNetTokenizer,
     get_linear_schedule_with_warmup,
 )
-from run_glue import processors, output_modes, add_masks
+from run_glue import processors, output_modes, add_masks, load_trained_model
 from glue_metrics import glue_compute_metrics as compute_metrics
 from transformers import glue_convert_examples_to_features as convert_examples_to_features
 from transformers import glue_output_modes as output_modes
@@ -835,23 +835,18 @@ def evaluate_task_with_initialization(args, task: str, initialization_func):
     seed_predictions = {}
     for seed_dir in task_dir.glob("seed_*"):
         args.model_name_or_path = str(seed_dir)
-        config = config_class.from_pretrained(
-            args.model_name_or_path,
-            num_labels=num_labels,
-            finetuning_task=task_name,
-            cache_dir=args.cache_dir if args.cache_dir else None,
-        )
+        # config = config_class.from_pretrained(
+        #     args.model_name_or_path,
+        #     num_labels=num_labels,
+        #     finetuning_task=task_name,
+        #     cache_dir=args.cache_dir if args.cache_dir else None,
+        # )
         tokenizer = tokenizer_class.from_pretrained(
             args.model_name_or_path,
             do_lower_case=args.do_lower_case,
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
-        model = model_class.from_pretrained(
-            args.model_name_or_path,
-            from_tf=bool(".ckpt" in args.model_name_or_path),
-            config=config,
-            cache_dir=args.cache_dir if args.cache_dir else None,
-        )
+        model = load_trained_model(args.model_name_or_path, model_class, config_class)
         if args.global_masks_dir is not None:
             mask_file = pathlib.Path(args.global_masks_dir) / task / seed_dir.stem / args.global_mask_file_name
             masks = torch.load(mask_file)
@@ -928,6 +923,7 @@ def evaluate_task_with_initialization(args, task: str, initialization_func):
         result = evaluate(args, task_name, data_dir, model, tokenizer)
         seed_predictions[seed_dir.stem] = result["predictions"]
         del result["predictions"]
+        logger.info(f"{args.experiment}: {task}: {seed_dir.stem}: {result}")
         seed_results.append(result)
     task_result = {}
     for key in seed_results[0]:
