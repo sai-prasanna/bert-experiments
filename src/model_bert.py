@@ -254,7 +254,7 @@ class BertSelfAttention(nn.Module):
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
 
-        outputs = (context_layer, attention_probs) if self.output_attentions else (context_layer,)
+        outputs = (context_layer, attention_probs, value_layer) if self.output_attentions else (context_layer,)
         return outputs
 
 
@@ -330,7 +330,14 @@ class BertAttention(nn.Module):
             hidden_states, attention_mask, head_mask, encoder_hidden_states, encoder_attention_mask
         )
         attention_output = self.output(self_outputs[0], hidden_states)
-        outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
+        if len(self_outputs) == 1:
+            outputs = (attention_output,)
+        else:
+            _, attention_probs, value_layer = self_outputs
+            output_head_weights = self.output.dense.weight.view(self.self.num_attention_heads, self.self.attention_head_size, -1)
+            proj_up_value_layer = torch.einsum("ijkl,jld->ijkd", value_layer, output_head_weights)
+            alpha_f =  torch.einsum("ijkl,ijld->ijkld", attention_probs, proj_up_value_layer)
+            outputs = (attention_output, attention_probs, alpha_f)
         return outputs
 
 
@@ -428,6 +435,7 @@ class BertEncoder(nn.Module):
     ):
         all_hidden_states = ()
         all_attentions = ()
+        all_alpha_f_s = ()
         for i, layer_module in enumerate(self.layer):
             if self.output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
@@ -440,8 +448,12 @@ class BertEncoder(nn.Module):
             if self.output_attentions:
                 if len(layer_outputs) > 1:
                     all_attentions = all_attentions + (layer_outputs[1],)
+                    
+                    all_alpha_f_s = all_alpha_f_s + (layer_outputs[2],)
                 else:
                     all_attentions = all_attentions + (None,)
+                    all_alpha_f_s = all_alpha_f_s + (None,)
+
 
         # Add last layer
         if self.output_hidden_states:
@@ -451,7 +463,7 @@ class BertEncoder(nn.Module):
         if self.output_hidden_states:
             outputs = outputs + (all_hidden_states,)
         if self.output_attentions:
-            outputs = outputs + (all_attentions,)
+            outputs = outputs + (all_attentions, all_alpha_f_s, attention_mask)
         return outputs  # last-layer hidden state, (all hidden states), (all attentions)
 
 
