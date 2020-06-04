@@ -10,3 +10,6 @@ data/**/
 models/**/
 masks/global/
 masks/heads_mlps_full_score/
+masks/heads_full_score/
+experiment_analysis/heatmap_attention_mask/**/
+src/runs_old/
