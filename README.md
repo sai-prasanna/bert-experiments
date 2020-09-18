@@ -17,7 +17,11 @@ These experiments were done on multi-gpu environment, were some experiments, ben
 
 1. Download the GLUE dataset using `data/download_glue.py` and `data/download_mnli_data.py`. Follow the instructions in `data/download_glue.py` docstring for MRPC. 
 2. All data for the tasks should be organized in `data/glue/task_name/` structure.
-3. Download the annotated head patterns (normed and raw) and place them in `data` directory.
+3. Extract the attention pattern classification labelled data.
+    ```sh
+    cd data
+    tar -xvf head_classification_data.tar.gz
+    ```
 
 ## Training, Masking, and Evaluation
 
@@ -45,7 +49,7 @@ Switch cwd to src (`cd src`) as many paths are relative from that directory.
 Note: These experiments were run through course of time and now stiched together into single scripts. So it might be better to run
 the training and evaluation commands in them one by one.
 
-5. Train the CNN classifier on head patterns normed and raw.
+5. Train the CNN classifier on attention patterns normed and raw.
 ```sh
 python classify_attention_patterns.py
 python classify_normed_patterns.py
@@ -60,6 +64,6 @@ These are primarily done in jupyter notebooks in `experiment_analysis` directory
 2. Magnitude pruning Heatmap - `global_magnitude_pruning_heatmaps.ipynb`
 3. Overlap of surviving components - `common_components.ipynb`
 4. Generate the random baseline - `frequency_baseline.ipynb`
-5. Head Classification Patterns - `head_classification.ipynb`
+5. Attention Classification Patterns - `head_classification.ipynb`
 6. Evaluation Result Comparisons and table - `eval_performance_analysis.ipynb`
 7. Statistics on mask correlation across seeds - `statistics_on_pruning.ipynb`
