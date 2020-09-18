@@ -268,9 +268,9 @@ def main():
     parser.add_argument(
         "--experiment",
         type=str,
-        default="none",
+        default="baseline",
         required=True,
-        help="The randomization experiment to run.")
+        help="The randomization experiment to run. Default `baseline` does no randomization")
     parser.add_argument(
         "--include_predictions", action="store_true", help="Set this flag if you want to save the predictions for the experiment.",
     )
@@ -295,28 +295,28 @@ def main():
         default=None,
         type=str,
         required=False,
-        help="Global masks to be applied before running the experiment. (Used only for baseline experiment tbh)",
+        help="Global masks to be applied before running the experiment. (Used only for baseline experiment)",
     )
     parser.add_argument(
         "--global_mask_file_name",
         default=None,
         type=str,
         required=False,
-        help="Global masks to be applied before running the experiment. (Used only for baseline experiment tbh)",
+        help="Global masks to be applied before running the experiment. (Used only for baseline experiment)",
     )
     parser.add_argument(
         "--head_masks_dir",
         default=None,
         type=str,
         required=False,
-        help="Head masks to be applied before running the experiment. (Used only for baseline experiment tbh)",
+        help="Head masks to be applied before running the experiment. (Used only for baseline experiment)",
     )
     parser.add_argument(
         "--mlp_masks_dir",
         default=None,
         type=str,
         required=False,
-        help="MLP masks to be applied before running the experiment. (Used only for baseline experiment tbh)",
+        help="MLP masks to be applied before running the experiment. (Used only for baseline experiment)",
     )
     parser.add_argument(
         "--mask_mode",
@@ -344,7 +344,7 @@ def main():
         "--do_lower_case", action="store_true", help="Set this flag if you are using an uncased model.",
     )
     parser.add_argument(
-        "--per_gpu_eval_batch_size", default=8, type=int, help="Batch size per GPU/CPU for evaluation.",
+        "--per_gpu_eval_batch_size", default=64, type=int, help="Batch size per GPU/CPU for evaluation.",
     )
     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
 
@@ -376,8 +376,10 @@ def main():
 
     # Prepare GLUE task
     experiment_map = {
+        # Only the `baseline` is used for the paper results.
+
         "baseline": experiment_baseline,
-        
+        # The rest can be ignored.
         "randomize_embeddings": experiment_randomize_embeddings,
         "randomize_qkv": experiment_randomize_qkv,
         "randomize_fc": experiment_randomize_fc,

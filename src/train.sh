@@ -1,8 +1,8 @@
 export GLUE_DIR=../data/glue
-export CUDA_VISIBLE_DEVICES=6
-mkdir -p ../finetuned_models/
+export CUDA_VISIBLE_DEVICES=0
+mkdir -p ../models/finetuned
 
-for TASK_NAME in "HANS" #"CoLA" "SST-2" "MRPC" "STS-B" "QQP" "MNLI" "QNLI" "RTE" "WNLI"
+for TASK_NAME in "CoLA" "SST-2" "MRPC" "STS-B" "QQP" "MNLI" "QNLI" "RTE" "WNLI"
 do
     mkdir -p ../experiments/$TASK_NAME/
     for SEED in 1337 42 86 71 166
@@ -19,7 +19,7 @@ do
         --per_gpu_train_batch_size 32 \
         --learning_rate 2e-5 \
         --num_train_epochs 3.0 \
-        --output_dir ../finetuned_models/$TASK_NAME/seed_$SEED/ \
+        --output_dir ../models/finetuned/$TASK_NAME/seed_$SEED/ \
         --save_steps 0 \
         --eval_batch_size 64 \
         --seed $SEED
