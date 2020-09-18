@@ -60,10 +60,10 @@ These only train the classifier.
 
 These are primarily done in jupyter notebooks in `experiment_analysis` directory. There are many experimental notebooks there. Here are the important ones used to generate results included in the paper.
 
-1. Importance pruning Heatmaps - `component_heatmaps.ipynb`. Ignore the final "train_subset" and "hans" settings.
-2. Magnitude pruning Heatmap - `global_magnitude_pruning_heatmaps.ipynb`
-3. Overlap of surviving components - `common_components.ipynb`
-4. Generate the random baseline - `frequency_baseline.ipynb`
-5. Attention Classification Patterns - `head_classification.ipynb`
-6. Evaluation Result Comparisons and table - `eval_performance_analysis.ipynb`
-7. Statistics on mask correlation across seeds - `statistics_on_pruning.ipynb`
+1. [Importance pruning Heatmaps](experiment_analysis/component_heatmaps.ipynb). Ignore the final "train_subset" and "hans" settings.
+2. [Magnitude pruning Heatmap](experiment_analysis/global_magnitude_pruning_heatmaps.ipynb)
+3. [Overlap of surviving components](experiment_analysis/common_components.ipynb)
+4. [Generate the random baseline](experiment_analysis/frequency_baseline.ipynb)
+5. [Attention Classification Patterns](experiment_analysis/head_classification.ipynb)
+6. [Evaluation Result Comparisons and table](experiment_analysis/eval_performance_analysis.ipynb)
+7. [Statistics on mask correlation across seeds](experiment_analysis/statistics_on_pruning.ipynb)
