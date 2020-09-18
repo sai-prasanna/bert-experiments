@@ -13,6 +13,11 @@ from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.preprocessing import normalize
 from tqdm import tqdm
 
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
 
 class Net(torch.nn.Module):
     def __init__(self, nb_classes):
@@ -216,12 +221,14 @@ def load_model(filename):
 
 
 def main():
+    set_seed(13)
+
     batch_size = 64
     nb_epochs = 200
     val_set_size = 0.2
     print_report = True
 
-    data_dir = Path('../experiment_analysis/heatmap_attention_mask/')
+    data_dir = Path('../data/head_classification_data/normed/')
     train_dir = data_dir.joinpath('data/')
     labels_filename = data_dir.joinpath('attention_norm_annotated.tsv')
     model_filename = '../models/head_classifier/classify_normed_patterns.tar'

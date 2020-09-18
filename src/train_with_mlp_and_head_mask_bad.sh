@@ -1,6 +1,5 @@
 export GLUE_DIR=../data/glue
-export CUDA_VISIBLE_DEVICES=2
-export MODELS_DIR=../finetuned_models_with_head_and_mlp_mask_bad/
+export MODELS_DIR=../models/finetuned_heads_mlps_bad/
 mkdir -p $MODELS_DIR
 
 
@@ -25,8 +24,8 @@ do
         --learning_rate 2e-5 \
         --num_train_epochs 3.0 \
         --output_dir $MODELS_DIR/$TASK_NAME/seed_$SEED/ \
-        --head_mask ../bad_head_mlp_masks_results/$TASK_NAME/seed_$SEED/head_mask.npy \
-        --mlp_mask ../bad_head_mlp_masks_results/$TASK_NAME/seed_$SEED/mlp_mask.npy \
+        --head_mask ../masks/heads_mlps_bad/$TASK_NAME/seed_$SEED/head_mask.npy \
+        --mlp_mask ../masks/heads_mlps_bad/$TASK_NAME/seed_$SEED/mlp_mask.npy \
         --save_steps 0 \
         --seed $SEED &
     done

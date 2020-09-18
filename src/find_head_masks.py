@@ -165,7 +165,10 @@ def mask_heads(args, model, eval_dataloader):
     i = 0
     while current_score >= original_score * args.masking_threshold:            
         head_mask = new_head_mask.clone()  # save current head mask
-
+        if args.save_mask_all_iterations:
+            np.save(os.path.join(args.output_dir, f"head_mask_{i}.npy"), head_mask.detach().cpu().numpy())
+            np.save(os.path.join(args.output_dir, f"head_importance_{i}.npy"), head_importance.detach().cpu().numpy())
+        i += 1
         # heads from least important to most - keep only not-masked heads
         head_importance[head_mask == 0.0] = float("Inf")
         current_heads_to_mask = head_importance.view(-1).sort()[1]
@@ -321,7 +324,9 @@ def main():
     parser.add_argument(
         "--overwrite_cache", action="store_true", help="Overwrite the cached training and evaluation sets"
     )
-
+    parser.add_argument(
+        "--save_mask_all_iterations", action="store_true", help="Saves the masks and importance scores in all iterations"
+    )
     parser.add_argument(
         "--dont_normalize_importance_by_layer", action="store_true", help="Don't normalize importance score by layers"
     )

@@ -1,5 +1,5 @@
 export GLUE_DIR=../data/glue
-mkdir -p ../finetuned_models/
+mkdir -p ../masks/
 
 for TASK_NAME in "CoLA" "SST-2" "MRPC" "STS-B" "QQP" "MNLI" "QNLI" "RTE" "WNLI"
 do
@@ -14,13 +14,14 @@ do
         export CUDA_VISIBLE_DEVICES=$GPU
         python find_head_masks.py \
                 --model_type bert \
-                --model_name_or_path ../finetuned_models/$TASK_NAME/seed_$SEED/ \
+                --model_name_or_path ../models/finetuned/$TASK_NAME/seed_$SEED/ \
                 --task_name $TASK_NAME \
                 --data_dir $GLUE_DIR/$TASK_NAME \
                 --max_seq_length 128 \
                 --output_dir $OUTPUT_DIR \
                 --seed $SEED \
                 --batch_size 64 \
+                --save_mask_all_iterations \
                 --try_masking &
     done
     wait;

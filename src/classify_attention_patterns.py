@@ -228,7 +228,7 @@ def main():
     val_set_size = 0.2
     print_report = True
 
-    data_dir = Path('../data/head_classification_data')
+    data_dir = Path('../data/head_classification_data/raw/')
     train_dir = data_dir.joinpath('for_training/')
     labels_filename = data_dir.joinpath('labels.txt')
     model_filename = Path('../models/head_classifier/classify_attention_patters.tar')

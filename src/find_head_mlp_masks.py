@@ -168,12 +168,19 @@ def mask_heads_mlps(args, model, eval_dataloader):
     logger.info("Finding additional head masks")
     best_score = original_score
     current_score = best_score
-    while current_score >= original_score * args.masking_threshold:            
+    iteration = 0
+    while current_score >= original_score * args.masking_threshold:
         best_score = current_score
         # Head New mask
         head_mask = new_head_mask.clone()  # save current head mask
+        if args.save_mask_all_iterations:
+            np.save(os.path.join(args.output_dir, f"head_mask_{iteration}.npy"), head_mask.detach().cpu().numpy())
+            np.save(os.path.join(args.output_dir, f"head_importance_{iteration}.npy"), head_importance.detach().cpu().numpy())
+
+
         ###################### heads from least important to most - keep only not-masked heads
         head_importance[head_mask == 0.0] = float("Inf")
+
         current_heads_to_mask = head_importance.view(-1).sort()[1]
 
         # mask heads
@@ -195,6 +202,12 @@ def mask_heads_mlps(args, model, eval_dataloader):
         
         ################################### MLP new mask
         mlp_mask = new_mlp_mask.clone()  # save current mlp mask
+        if args.save_mask_all_iterations:
+            np.save(os.path.join(args.output_dir, f"mlp_mask_{iteration}.npy"), mlp_mask.detach().cpu().numpy())
+            np.save(os.path.join(args.output_dir, f"mlp_importance_{iteration}.npy"), mlp_importance.detach().cpu().numpy())
+
+        iteration += 1
+
         # mlps from least important to most - keep only not-masked heads
         mlp_importance[mlp_mask == 0.0] = float("Inf")
         current_mlps_to_mask = mlp_importance.sort()[1]
@@ -233,6 +246,11 @@ def mask_heads_mlps(args, model, eval_dataloader):
     while current_score >= original_score * args.masking_threshold:
         # Head New mask
         head_mask = new_head_mask.clone()  # save current head mask
+        if args.save_mask_all_iterations:
+            np.save(os.path.join(args.output_dir, f"head_mask_{iteration}.npy"), head_mask.detach().cpu().numpy())
+            np.save(os.path.join(args.output_dir, f"head_importance_{iteration}.npy"), head_importance.detach().cpu().numpy())
+
+        iteration += 1
         best_score = current_score
         ###################### heads from least important to most - keep only not-masked heads
         head_importance[head_mask == 0.0] = float("Inf")
@@ -277,6 +295,11 @@ def mask_heads_mlps(args, model, eval_dataloader):
     
         ################################### MLP new mask
         mlp_mask = new_mlp_mask.clone()  # save current mlp mask
+        if args.save_mask_all_iterations:
+            np.save(os.path.join(args.output_dir, f"mlp_mask_{iteration}.npy"), mlp_mask.detach().cpu().numpy())
+            np.save(os.path.join(args.output_dir, f"mlp_importance_{iteration}.npy"), mlp_importance.detach().cpu().numpy())
+
+        iteration += 1
         # mlps from least important to most - keep only not-masked heads
         mlp_importance[mlp_mask == 0.0] = float("Inf")
         current_mlps_to_mask = mlp_importance.sort()[1]
@@ -428,6 +451,9 @@ def main():
     )
     parser.add_argument(
         "--overwrite_cache", action="store_true", help="Overwrite the cached training and evaluation sets"
+    )
+    parser.add_argument(
+        "--save_mask_all_iterations", action="store_true", help="Saves the masks and importance scores in all iterations"
     )
 
     parser.add_argument(
