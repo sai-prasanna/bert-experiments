@@ -1,7 +1,7 @@
 # When BERT Plays the Lottery, All Tickets Are Winning
-```
-Large Transformer-based models were shown to be reducible to a smaller number of self-attention heads and layers. We consider this phenomenon from the perspective of the lottery ticket hypothesis. For fine-tuned BERT, we show that (a) it is possible to find a subnetwork that achieves performance comparable with that of the full model, and (b) similarly-sized subnetworks sampled from the rest of the model perform worse. Strikingly, the ``bad" subnetworks can be fine-tuned separately to achieve only slightly worse performance than the ``good" ones, indicating that most pre-trained BERT weights are potentially useful. We also study the ``good" subnetworks to see if their success can be attributed to superior linguistic knowledge, but find them unstable, and not explainable by meaningful self-attention patterns.
-```
+
+Large Transformer-based models were shown to be reducible to a smaller number of self-attention heads and layers. We consider this phenomenon from the perspective of the lottery ticket hypothesis, using both structured and magnitude pruning. For fine-tuned BERT, we show that (a) it is possible to find subnetworks achieving performance that is comparable with that of the full model, and (b) similarly-sized subnetworks sampled from the rest of the model perform worse. Strikingly, with structured pruning even the worst possible subnetworks remain highly trainable, indicating that most pre-trained BERT weights are potentially useful.
+We also study the "good" subnetworks to see if their success can be attributed to superior linguistic knowledge, but find them unstable, and not explained by meaningful self-attention patterns.
 
 ## Environment
 
